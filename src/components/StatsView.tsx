@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { withDemo } from "@/lib/clientDemo";
 import { TrendingUp, TrendingDown, Minus, AlertOctagon, Loader2 } from "lucide-react";
 
 interface TrainStat {
@@ -46,7 +47,7 @@ export function StatsView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/stats")
+    fetch(withDemo("/api/stats"))
       .then((r) => r.json())
       .then((d) => {
         if (d.error) throw new Error(d.error);

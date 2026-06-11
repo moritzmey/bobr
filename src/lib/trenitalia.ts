@@ -17,6 +17,18 @@ export interface TrainDeparture {
   cancelled: boolean;
   originId: string;
   platform: string | null;
+  departureDateMs: number | null;
+}
+
+export interface TrainArrival {
+  trainNumber: string;
+  category: string;
+  origin: string;
+  scheduledTime: string;
+  delayMinutes: number;
+  cancelled: boolean;
+  originId: string;
+  departureDateMs: number | null;
 }
 
 export interface TrainStatus {
@@ -37,6 +49,11 @@ export interface TrainStop {
   scheduledDeparture: string | null;
   actualDeparture: string | null;
   delayMinutes: number;
+  // Raw epoch-ms values, used for live position interpolation
+  schedArrMs: number | null;
+  actArrMs: number | null;
+  schedDepMs: number | null;
+  actDepMs: number | null;
 }
 
 function parseTime(ts: number | null): string | null {
@@ -59,6 +76,18 @@ interface RawDeparture {
   provvedimento: number;
   codOrigine: string;
   binarioProgrammatoPartenzaDescrizione: string | null;
+  dataPartenzaTreno: number | null;
+}
+
+interface RawArrival {
+  numeroTreno: number;
+  categoriaDescrizione: string;
+  origine: string;
+  orarioArrivo: number;
+  ritardo: number;
+  provvedimento: number;
+  codOrigine: string;
+  dataPartenzaTreno: number | null;
 }
 
 export async function fetchDepartures(stationId: string): Promise<TrainDeparture[]> {
@@ -88,7 +117,31 @@ export async function fetchDepartures(stationId: string): Promise<TrainDeparture
       cancelled: t.provvedimento === 1,
       originId: t.codOrigine || stationId,
       platform: t.binarioProgrammatoPartenzaDescrizione || null,
+      departureDateMs: t.dataPartenzaTreno ?? null,
     }));
+}
+
+export async function fetchArrivals(stationId: string): Promise<TrainArrival[]> {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dateStr = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+
+  const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(dateStr)}`;
+  const res = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
+
+  const data: RawArrival[] = await res.json();
+
+  return data.map((t) => ({
+    trainNumber: String(t.numeroTreno),
+    category: (t.categoriaDescrizione || "R").trim(),
+    origin: t.origine || "",
+    scheduledTime: parseTime(t.orarioArrivo) ?? "",
+    delayMinutes: Math.max(0, t.ritardo || 0),
+    cancelled: t.provvedimento === 1,
+    originId: t.codOrigine || "",
+    departureDateMs: t.dataPartenzaTreno ?? null,
+  }));
 }
 
 interface RawStop {
@@ -96,6 +149,8 @@ interface RawStop {
   id: string;
   programmata: number | null;
   effettiva: number | null;
+  arrivo_teorico: number | null;
+  arrivoReale: number | null;
   partenza_teorica: number | null;
   partenzaReale: number | null;
   ritardo: number;
@@ -139,6 +194,10 @@ export async function fetchTrainStatus(
       scheduledDeparture: parseTime(s.partenza_teorica),
       actualDeparture: parseTime(s.partenzaReale),
       delayMinutes: Math.max(0, s.ritardoPartenza ?? s.ritardo ?? 0),
+      schedArrMs: s.arrivo_teorico ?? s.programmata ?? null,
+      actArrMs: s.arrivoReale ?? s.effettiva ?? null,
+      schedDepMs: s.partenza_teorica ?? null,
+      actDepMs: s.partenzaReale ?? null,
     })),
   };
 }

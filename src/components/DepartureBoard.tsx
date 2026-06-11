@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TrainDeparture } from "@/lib/trenitalia";
+import { withDemo } from "@/lib/clientDemo";
 import { TrainCard } from "./TrainCard";
 import { RefreshCw, WifiOff } from "lucide-react";
 
@@ -24,7 +25,7 @@ export function DepartureBoard({ stationKey, stationId }: Props) {
     async (showRefreshing = false) => {
       if (showRefreshing) setRefreshing(true);
       try {
-        const res = await fetch(`/api/departures?station=${stationKey}`);
+        const res = await fetch(withDemo(`/api/departures?station=${stationKey}`));
         if (!res.ok) throw new Error("API error");
         const data: TrainDeparture[] = await res.json();
         setTrains(data);

@@ -1,9 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabase, TrainSnapshotRow } from "@/lib/supabase";
+import { demoStats } from "@/lib/demo";
 
-export const revalidate = 300;
+export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.has("demo")) {
+    return NextResponse.json(demoStats(), {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
 
-export async function GET() {
   const supabase = getSupabase();
 
   // Last 30 days

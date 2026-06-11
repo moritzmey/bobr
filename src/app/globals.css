@@ -22,3 +22,9 @@ body {
 * {
   -webkit-font-smoothing: antialiased;
 }
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -63;
+  }
+}

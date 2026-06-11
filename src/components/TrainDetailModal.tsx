@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TrainDeparture, TrainStatus } from "@/lib/trenitalia";
+import { withDemo } from "@/lib/clientDemo";
 import { DelayBadge } from "./DelayBadge";
 import { X, MapPin, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
@@ -28,7 +29,7 @@ export function TrainDetailModal({ train, stationId, onClose }: Props) {
       origin: train.originId || stationId,
       date: String(todayMs()),
     });
-    fetch(`/api/train?${params}`)
+    fetch(withDemo(`/api/train?${params}`))
       .then((r) => r.json())
       .then((d) => {
         if (d.error) throw new Error(d.error);
