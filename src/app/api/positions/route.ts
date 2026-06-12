@@ -5,21 +5,22 @@ import {
   fetchTrainStatus,
   STATIONS,
 } from "@/lib/trenitalia";
-import { computeCorridorPosition, LiveTrain } from "@/lib/route";
+import { computeNetworkPosition, LiveTrain } from "@/lib/route";
 import { demoLiveTrains } from "@/lib/demo";
 
 export const runtime = "edge";
 
-// Keywords identifying trains whose route crosses the BZ–BX corridor
-const NORTH_OF_BZ = ["BRESSANONE", "BRIXEN", "FORTEZZA", "BRENNERO", "INNSBRUCK", "SAN CANDIDO", "INNICHEN", "LIENZ", "MONACO", "MUNCHEN", "MÜNCHEN"];
-const SOUTH_OF_BX = ["BOLZANO", "BOZEN", "TRENTO", "VERONA", "ROVERETO", "ALA", "BOLOGNA", "MILANO", "ROMA"];
+// Stations whose departure/arrival boards we scan for candidate trains.
+// Together they cover the Brenner axis, Pustertal, and the Meran line.
+const BOARD_STATIONS = [
+  STATIONS.BOLZANO.id,
+  STATIONS.BRESSANONE.id,
+  STATIONS.FORTEZZA.id,
+  STATIONS.MERANO.id,
+  STATIONS.BRUNICO.id,
+];
 
-const MAX_CANDIDATES = 16;
-
-function matchesAny(name: string, keywords: string[]): boolean {
-  const upper = name.toUpperCase();
-  return keywords.some((k) => upper.includes(k));
-}
+const MAX_CANDIDATES = 28;
 
 function todayMidnightRomeMs(): number {
   const romeNow = new Date(
@@ -33,6 +34,7 @@ interface Candidate {
   trainNumber: string;
   originId: string;
   departureDateMs: number;
+  category: string;
 }
 
 export async function GET(req: NextRequest) {
@@ -46,50 +48,29 @@ export async function GET(req: NextRequest) {
   const fallbackDate = todayMidnightRomeMs();
   const candidates = new Map<string, Candidate>();
 
-  const addCandidate = (trainNumber: string, originId: string, dateMs: number | null) => {
+  const addCandidate = (
+    trainNumber: string,
+    originId: string,
+    dateMs: number | null,
+    category: string
+  ) => {
     if (!originId || candidates.has(trainNumber)) return;
     candidates.set(trainNumber, {
       trainNumber,
       originId,
       departureDateMs: dateMs ?? fallbackDate,
+      category,
     });
   };
 
-  const [bzDep, bxDep, bzArr, bxArr] = await Promise.allSettled([
-    fetchDepartures(STATIONS.BOLZANO.id),
-    fetchDepartures(STATIONS.BRESSANONE.id),
-    fetchArrivals(STATIONS.BOLZANO.id),
-    fetchArrivals(STATIONS.BRESSANONE.id),
-  ]);
+  const boards = await Promise.allSettled(
+    BOARD_STATIONS.flatMap((id) => [fetchDepartures(id), fetchArrivals(id)])
+  );
 
-  // Departing trains crossing the corridor
-  if (bzDep.status === "fulfilled") {
-    for (const t of bzDep.value) {
-      if (!t.cancelled && matchesAny(t.destination, NORTH_OF_BZ)) {
-        addCandidate(t.trainNumber, t.originId, t.departureDateMs);
-      }
-    }
-  }
-  if (bxDep.status === "fulfilled") {
-    for (const t of bxDep.value) {
-      if (!t.cancelled && matchesAny(t.destination, SOUTH_OF_BX)) {
-        addCandidate(t.trainNumber, t.originId, t.departureDateMs);
-      }
-    }
-  }
-  // Trains currently en route show up as upcoming arrivals at the far end
-  if (bxArr.status === "fulfilled") {
-    for (const t of bxArr.value) {
-      if (!t.cancelled && matchesAny(t.origin, SOUTH_OF_BX)) {
-        addCandidate(t.trainNumber, t.originId, t.departureDateMs);
-      }
-    }
-  }
-  if (bzArr.status === "fulfilled") {
-    for (const t of bzArr.value) {
-      if (!t.cancelled && matchesAny(t.origin, NORTH_OF_BZ)) {
-        addCandidate(t.trainNumber, t.originId, t.departureDateMs);
-      }
+  for (const board of boards) {
+    if (board.status !== "fulfilled") continue;
+    for (const t of board.value) {
+      if (!t.cancelled) addCandidate(t.trainNumber, t.originId, t.departureDateMs, t.category);
     }
   }
 
@@ -104,21 +85,24 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const trains: LiveTrain[] = [];
 
-  for (const result of statuses) {
+  for (let i = 0; i < statuses.length; i++) {
+    const result = statuses[i];
     if (result.status !== "fulfilled") continue;
     const status = result.value;
     if (status.cancelled) continue;
 
-    const pos = computeCorridorPosition(status, now);
+    const pos = computeNetworkPosition(status, now);
     if (!pos) continue;
 
+    // andamentoTreno often omits the category — the board knows it
     trains.push({
       trainNumber: status.trainNumber,
-      category: status.category,
+      category: limited[i].category || status.category,
       destination: status.destination,
       delayMinutes: status.delayMinutes,
-      direction: pos.direction,
+      lineId: pos.lineId,
       frac: pos.frac,
+      heading: pos.heading,
       atStation: pos.atStation,
       nextStation: pos.nextStation,
       lastSeenAt: status.lastSeenAt,

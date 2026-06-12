@@ -1,145 +1,261 @@
-import { TrainStatus } from "./trenitalia";
+import { TrainStatus, TrainStop } from "./trenitalia";
 
-export interface CorridorStation {
+// ---------------------------------------------------------------------------
+// South Tyrol rail network, metro-map style.
+// Stations carry fixed map coordinates (viewBox 0 0 390 640); lines are
+// ordered station-key lists. Train positions interpolate along the chords
+// between stations, so server (position math) and client (rendering) agree
+// exactly without any SVG path-length measuring.
+// ---------------------------------------------------------------------------
+
+export type LineId = "brenner" | "pustertal" | "meran";
+
+export interface NetStation {
   key: string;
-  name: string; // German
-  nameIt: string; // Italian
-  frac: number; // position along the rail line, 0 = Bozen, 1 = Brixen
+  name: string; // German display name
+  x: number;
+  y: number;
   major: boolean;
-  match: string[]; // uppercase tokens matched against Viaggiatreno station names
+  match: string[]; // tokens matched against Viaggiatreno stop names
+  label?: [dx: number, dy: number, anchor: "start" | "middle" | "end"];
 }
 
-// Stations of the Brenner line through the Eisack valley, fractions
-// roughly proportional to real rail distance (~40 km total)
-export const CORRIDOR: CorridorStation[] = [
-  { key: "BZ", name: "Bozen", nameIt: "Bolzano", frac: 0, major: true, match: ["BOLZANO", "BOZEN"] },
-  { key: "BL", name: "Blumau", nameIt: "Prato Isarco", frac: 0.22, major: false, match: ["PRATO ISARCO", "BLUMAU"] },
-  { key: "AT", name: "Atzwang", nameIt: "Campodazzo", frac: 0.38, major: false, match: ["CAMPODAZZO", "ATZWANG"] },
-  { key: "WB", name: "Waidbruck", nameIt: "Ponte Gardena", frac: 0.58, major: false, match: ["PONTE GARDENA", "WAIDBRUCK"] },
-  { key: "KL", name: "Klausen", nameIt: "Chiusa", frac: 0.72, major: true, match: ["CHIUSA", "KLAUSEN"] },
-  { key: "AB", name: "Albeins", nameIt: "Albes", frac: 0.88, major: false, match: ["ALBES", "ALBEINS"] },
-  { key: "BX", name: "Brixen", nameIt: "Bressanone", frac: 1, major: true, match: ["BRESSANONE", "BRIXEN"] },
+export const NET_STATIONS: Record<string, NetStation> = {
+  // Brenner axis, south to north
+  SAL: { key: "SAL", name: "Salurn", x: 132, y: 612, major: false, match: ["SALORNO"], label: [-10, 4, "end"] },
+  EGN: { key: "EGN", name: "Neumarkt", x: 140, y: 580, major: false, match: ["EGNA"] },
+  AUE: { key: "AUE", name: "Auer", x: 146, y: 552, major: false, match: ["ORA"] },
+  BRA: { key: "BRA", name: "Branzoll", x: 150, y: 524, major: false, match: ["BRONZOLO"] },
+  LEI: { key: "LEI", name: "Leifers", x: 153, y: 498, major: false, match: ["LAIVES"] },
+  BZ: { key: "BZ", name: "Bozen", x: 158, y: 462, major: true, match: ["BOLZANO", "BOZEN"], label: [-14, 6, "end"] },
+  BL: { key: "BL", name: "Blumau", x: 192, y: 420, major: false, match: ["PRATO ISARCO", "BLUMAU"] },
+  AT: { key: "AT", name: "Atzwang", x: 204, y: 390, major: false, match: ["CAMPODAZZO", "ATZWANG"] },
+  WB: { key: "WB", name: "Waidbruck", x: 212, y: 356, major: false, match: ["PONTE GARDENA", "WAIDBRUCK"] },
+  KL: { key: "KL", name: "Klausen", x: 220, y: 324, major: false, match: ["CHIUSA", "KLAUSEN"], label: [-12, 4, "end"] },
+  AB: { key: "AB", name: "Albeins", x: 228, y: 286, major: false, match: ["ALBES", "ALBEINS"] },
+  BX: { key: "BX", name: "Brixen", x: 234, y: 258, major: true, match: ["BRESSANONE", "BRIXEN"], label: [14, 4, "start"] },
+  FF: { key: "FF", name: "Franzensfeste", x: 226, y: 210, major: true, match: ["FORTEZZA", "FRANZENSFESTE"], label: [-14, 4, "end"] },
+  FRE: { key: "FRE", name: "Freienfeld", x: 208, y: 162, major: false, match: ["CAMPO DI TRENS", "FREIENFELD"] },
+  ST: { key: "ST", name: "Sterzing", x: 198, y: 130, major: false, match: ["VIPITENO", "STERZING"], label: [-12, 4, "end"] },
+  GO: { key: "GO", name: "Gossensass", x: 196, y: 96, major: false, match: ["COLLE ISARCO", "GOSSENSASS"] },
+  BR: { key: "BR", name: "Brenner", x: 200, y: 56, major: true, match: ["BRENNERO", "BRENNER"], label: [12, 4, "start"] },
+
+  // Pustertal, west to east
+  MUE: { key: "MUE", name: "Mühlbach", x: 258, y: 200, major: false, match: ["RIO DI PUSTERIA", "RIO PUSTERIA", "MUHLBACH"] },
+  VIN: { key: "VIN", name: "Vintl", x: 284, y: 192, major: false, match: ["VANDOIES", "VINTL"] },
+  BRU: { key: "BRU", name: "Bruneck", x: 312, y: 180, major: true, match: ["BRUNICO", "BRUNECK"], label: [0, -12, "middle"] },
+  OLA: { key: "OLA", name: "Olang", x: 336, y: 166, major: false, match: ["VALDAORA", "OLANG"] },
+  WEL: { key: "WEL", name: "Welsberg", x: 352, y: 150, major: false, match: ["MONGUELFO", "WELSBERG"] },
+  VLB: { key: "VLB", name: "Niederdorf", x: 362, y: 140, major: false, match: ["VILLABASSA", "NIEDERDORF"] },
+  TOB: { key: "TOB", name: "Toblach", x: 370, y: 130, major: false, match: ["DOBBIACO", "TOBLACH"] },
+  INN: { key: "INN", name: "Innichen", x: 380, y: 116, major: true, match: ["CANDIDO", "INNICHEN", "VERSCIACO"], label: [-10, -8, "end"] },
+
+  // Meran line, east to west
+  TER: { key: "TER", name: "Terlan", x: 120, y: 440, major: false, match: ["TERLANO", "TERLAN"] },
+  VIL: { key: "VIL", name: "Vilpian", x: 98, y: 424, major: false, match: ["VILPIANO", "VILPIAN"] },
+  GAR: { key: "GAR", name: "Gargazon", x: 80, y: 406, major: false, match: ["GARGAZZONE", "GARGAZON"] },
+  LAN: { key: "LAN", name: "Lana", x: 64, y: 384, major: false, match: ["LANA", "POSTAL", "BURGSTALL"] },
+  MER: { key: "MER", name: "Meran", x: 54, y: 356, major: true, match: ["MERANO", "MERAN"], label: [4, 22, "middle"] },
+};
+
+export interface RailLine {
+  id: LineId;
+  stationKeys: string[];
+  fracs: number[]; // cumulative chord-length fraction per station, 0..1
+}
+
+function buildLine(id: LineId, stationKeys: string[]): RailLine {
+  const pts = stationKeys.map((k) => NET_STATIONS[k]);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  }
+  const total = cum[cum.length - 1];
+  return { id, stationKeys, fracs: cum.map((c) => c / total) };
+}
+
+export const LINES: RailLine[] = [
+  buildLine("brenner", ["SAL", "EGN", "AUE", "BRA", "LEI", "BZ", "BL", "AT", "WB", "KL", "AB", "BX", "FF", "FRE", "ST", "GO", "BR"]),
+  buildLine("pustertal", ["FF", "MUE", "VIN", "BRU", "OLA", "WEL", "VLB", "TOB", "INN"]),
+  buildLine("meran", ["BZ", "TER", "VIL", "GAR", "LAN", "MER"]),
 ];
 
-export type Direction = "north" | "south";
+export function getLine(id: LineId): RailLine {
+  return LINES.find((l) => l.id === id)!;
+}
+
+// The Bozen–Brixen home corridor, highlighted on the map
+export const CORRIDOR_KEYS = ["BZ", "BL", "AT", "WB", "KL", "AB", "BX"];
+
+export function pointOnLine(lineId: LineId, frac: number): { x: number; y: number; angle: number } {
+  const line = getLine(lineId);
+  const f = Math.min(1, Math.max(0, frac));
+  let i = line.fracs.findIndex((lf, idx) => idx < line.fracs.length - 1 && f >= lf && f <= line.fracs[idx + 1]);
+  if (i === -1) i = f <= 0 ? 0 : line.fracs.length - 2;
+  const a = NET_STATIONS[line.stationKeys[i]];
+  const b = NET_STATIONS[line.stationKeys[i + 1]];
+  const span = line.fracs[i + 1] - line.fracs[i];
+  const t = span > 0 ? (f - line.fracs[i]) / span : 0;
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+  };
+}
+
+// --- Station-name matching -------------------------------------------------
+
+const ALL_STATIONS = Object.values(NET_STATIONS);
+
+export function matchNetStation(stopName: string): NetStation | null {
+  const upper = stopName.toUpperCase().trim();
+  let best: NetStation | null = null;
+  let bestScore = 0;
+  for (const st of ALL_STATIONS) {
+    for (const token of st.match) {
+      let score = 0;
+      if (upper === token) score = 1000 + token.length;
+      else if (upper.startsWith(token)) score = 500 + token.length;
+      else if (upper.includes(token)) score = token.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = st;
+      }
+    }
+  }
+  return best;
+}
+
+// --- Live position ---------------------------------------------------------
 
 export interface LiveTrain {
   trainNumber: string;
   category: string;
   destination: string;
   delayMinutes: number;
-  direction: Direction;
+  lineId: LineId;
   frac: number;
+  heading: 1 | -1; // 1 = toward the last station of the line array
   atStation: string | null;
   nextStation: string | null;
   lastSeenAt: string | null;
 }
 
-export interface CorridorPosition {
+type PosState = "moving" | "dwell" | "waiting" | "linger";
+const STATE_PRIORITY: Record<PosState, number> = { moving: 4, dwell: 3, waiting: 2, linger: 1 };
+
+export interface NetPosition {
+  lineId: LineId;
   frac: number;
-  direction: Direction;
+  heading: 1 | -1;
   atStation: string | null;
   nextStation: string | null;
 }
 
-export function matchCorridorStation(stationName: string): CorridorStation | null {
-  const upper = stationName.toUpperCase();
-  return CORRIDOR.find((cs) => cs.match.some((m) => upper.includes(m))) ?? null;
-}
-
-export function nextStationFromFrac(frac: number, direction: Direction): string | null {
-  if (direction === "north") {
-    const next = CORRIDOR.find((cs) => cs.major && cs.frac > frac + 0.01);
-    return next?.name ?? null;
-  }
-  const next = [...CORRIDOR].reverse().find((cs) => cs.major && cs.frac < frac - 0.01);
-  return next?.name ?? null;
-}
-
-// Margins for showing trains waiting at / just arrived at corridor endpoints
 const WAIT_BEFORE_MS = 8 * 60_000;
 const LINGER_AFTER_MS = 4 * 60_000;
 
-/**
- * Estimates where a train currently is on the Bozen–Brixen corridor by
- * interpolating between effective (actual or delay-adjusted scheduled)
- * stop times. Returns null when the train is not currently on the corridor.
- */
-export function computeCorridorPosition(
-  status: TrainStatus,
-  now: number = Date.now()
-): CorridorPosition | null {
-  const delayMs = status.delayMinutes * 60_000;
+interface MatchedStop {
+  station: NetStation;
+  lineIdx: number;
+  stop: TrainStop;
+}
 
-  // Corridor stops in travel order
-  const matched = status.stops
-    .map((stop) => ({ cs: matchCorridorStation(stop.stationName), stop }))
-    .filter((m): m is { cs: CorridorStation; stop: (typeof status.stops)[number] } => m.cs !== null);
+function effTimes(m: MatchedStop, delayMs: number, isFirst: boolean) {
+  const dep = m.stop.actDepMs ?? (m.stop.schedDepMs != null ? m.stop.schedDepMs + delayMs : null);
+  let arr = m.stop.actArrMs ?? (m.stop.schedArrMs != null ? m.stop.schedArrMs + delayMs : null);
+  if (arr == null && isFirst && dep != null) arr = dep - 30_000;
+  return { arr, dep: dep ?? arr };
+}
 
+function positionOnLine(
+  line: RailLine,
+  stops: { station: NetStation; stop: TrainStop }[],
+  delayMs: number,
+  now: number
+): { pos: NetPosition; state: PosState } | null {
+  const matched: MatchedStop[] = [];
+  for (const s of stops) {
+    const lineIdx = line.stationKeys.indexOf(s.station.key);
+    if (lineIdx !== -1) matched.push({ station: s.station, lineIdx, stop: s.stop });
+  }
   if (matched.length < 2) return null;
 
-  const direction: Direction = matched[0].cs.frac < matched[matched.length - 1].cs.frac ? "north" : "south";
+  // Require strictly monotonic travel along this line
+  const increasing = matched[1].lineIdx > matched[0].lineIdx;
+  for (let i = 1; i < matched.length; i++) {
+    if (increasing !== matched[i].lineIdx > matched[i - 1].lineIdx) return null;
+  }
+  const heading: 1 | -1 = increasing ? 1 : -1;
+  const fracOf = (m: MatchedStop) => line.fracs[m.lineIdx];
 
-  const effDep = (i: number): number | null => {
-    const s = matched[i].stop;
-    if (s.actDepMs != null) return s.actDepMs;
-    if (s.schedDepMs != null) return s.schedDepMs + delayMs;
-    return null;
-  };
-  const effArr = (i: number): number | null => {
-    const s = matched[i].stop;
-    if (s.actArrMs != null) return s.actArrMs;
-    if (s.schedArrMs != null) return s.schedArrMs + delayMs;
-    // Origin station has no arrival; treat as just before departure
-    const dep = effDep(i);
-    return dep != null ? dep - 30_000 : null;
-  };
-
-  const position = (frac: number, atStation: string | null): CorridorPosition => ({
-    frac,
-    direction,
-    atStation,
-    nextStation: nextStationFromFrac(frac, direction),
+  const make = (frac: number, atStation: string | null, state: PosState) => ({
+    pos: { lineId: line.id, frac, heading, atStation, nextStation: null },
+    state,
   });
 
-  const firstDep = effDep(0) ?? effArr(0);
-  const lastArr = effArr(matched.length - 1);
+  const first = effTimes(matched[0], delayMs, true);
+  const last = effTimes(matched[matched.length - 1], delayMs, false);
 
-  // Not yet entered the corridor
-  if (firstDep != null && now < firstDep) {
-    if (firstDep - now <= WAIT_BEFORE_MS) {
-      return position(matched[0].cs.frac, matched[0].cs.name);
+  if (first.dep != null && now < first.dep) {
+    if ((first.arr == null || now < first.arr) && first.dep - now <= WAIT_BEFORE_MS) {
+      return make(fracOf(matched[0]), matched[0].station.name, "waiting");
+    }
+    if (first.arr != null && now >= first.arr) {
+      return make(fracOf(matched[0]), matched[0].station.name, "dwell");
     }
     return null;
   }
 
-  // Already left the corridor
-  if (lastArr != null && now > lastArr) {
-    if (now - lastArr <= LINGER_AFTER_MS) {
-      return position(matched[matched.length - 1].cs.frac, matched[matched.length - 1].cs.name);
+  if (last.arr != null && now > last.arr) {
+    if (now - last.arr <= LINGER_AFTER_MS) {
+      return make(fracOf(matched[matched.length - 1]), matched[matched.length - 1].station.name, "linger");
     }
     return null;
   }
 
   for (let i = 0; i < matched.length; i++) {
-    const arr = effArr(i);
-    const dep = effDep(i) ?? arr;
-
-    // Dwelling at a station
-    if (arr != null && dep != null && now >= arr && now <= dep) {
-      return position(matched[i].cs.frac, matched[i].cs.name);
+    const t = effTimes(matched[i], delayMs, i === 0);
+    if (t.arr != null && t.dep != null && now >= t.arr && now <= t.dep) {
+      return make(fracOf(matched[i]), matched[i].station.name, "dwell");
     }
-
-    // Between this stop and the next
-    if (i < matched.length - 1 && dep != null) {
-      const nextArr = effArr(i + 1);
-      if (nextArr != null && now > dep && now < nextArr && nextArr > dep) {
-        const t = (now - dep) / (nextArr - dep);
-        const frac = matched[i].cs.frac + (matched[i + 1].cs.frac - matched[i].cs.frac) * t;
-        return position(frac, null);
+    if (i < matched.length - 1 && t.dep != null) {
+      const next = effTimes(matched[i + 1], delayMs, false);
+      if (next.arr != null && now > t.dep && now < next.arr && next.arr > t.dep) {
+        const p = (now - t.dep) / (next.arr - t.dep);
+        const frac = fracOf(matched[i]) + (fracOf(matched[i + 1]) - fracOf(matched[i])) * p;
+        return make(frac, null, "moving");
       }
     }
   }
 
   return null;
+}
+
+export function computeNetworkPosition(status: TrainStatus, now: number = Date.now()): NetPosition | null {
+  const delayMs = status.delayMinutes * 60_000;
+
+  const stops = status.stops
+    .map((stop) => ({ station: matchNetStation(stop.stationName), stop }))
+    .filter((s): s is { station: NetStation; stop: TrainStop } => s.station !== null);
+
+  if (stops.length < 2) return null;
+
+  let best: { pos: NetPosition; state: PosState } | null = null;
+  for (const line of LINES) {
+    const candidate = positionOnLine(line, stops, delayMs, now);
+    if (candidate && (!best || STATE_PRIORITY[candidate.state] > STATE_PRIORITY[best.state])) {
+      best = candidate;
+    }
+  }
+  if (!best) return null;
+
+  // Next stop from the train's own stop list (more accurate than line geometry)
+  const upcoming = stops.find(({ stop }) => {
+    const arr = stop.actArrMs ?? (stop.schedArrMs != null ? stop.schedArrMs + delayMs : null);
+    return arr != null && arr > now;
+  });
+  best.pos.nextStation = upcoming?.station.name ?? null;
+
+  return best.pos;
 }

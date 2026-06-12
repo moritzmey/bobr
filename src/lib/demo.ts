@@ -1,15 +1,34 @@
 import { TrainDeparture, TrainStatus } from "./trenitalia";
-import { CORRIDOR, Direction, LiveTrain, nextStationFromFrac } from "./route";
+import { getLine, LineId, LiveTrain, NET_STATIONS } from "./route";
 
 // Deterministic dummy data for previewing the UI without live APIs.
 // Trains "move" in real time: position derives from the wall clock.
 
-const JOURNEY_MS = 34 * 60_000;
-const HEADWAY_MS = 30 * 60_000;
 const DELAYS = [0, 4, 13, 0, 28, 6, 2, 0, 9, 17];
 
-const NORTH_DESTS = ["BRENNERO", "INNSBRUCK HBF", "BRESSANONE", "FORTEZZA"];
-const SOUTH_DESTS = ["BOLZANO", "VERONA PORTA NUOVA", "TRENTO", "BOLOGNA C.LE"];
+const LINE_CONFIG: Record<
+  LineId,
+  { journeyMs: number; headwayMs: number; toEnd: string[]; toStart: string[] }
+> = {
+  brenner: {
+    journeyMs: 80 * 60_000,
+    headwayMs: 30 * 60_000,
+    toEnd: ["BRENNERO", "INNSBRUCK HBF"],
+    toStart: ["VERONA PORTA NUOVA", "BOLZANO", "TRENTO"],
+  },
+  pustertal: {
+    journeyMs: 65 * 60_000,
+    headwayMs: 60 * 60_000,
+    toEnd: ["S.CANDIDO"],
+    toStart: ["FORTEZZA", "BOLZANO"],
+  },
+  meran: {
+    journeyMs: 38 * 60_000,
+    headwayMs: 30 * 60_000,
+    toEnd: ["MERANO"],
+    toStart: ["BOLZANO"],
+  },
+};
 
 function fmtTime(ms: number): string {
   return new Date(ms).toLocaleTimeString("it-IT", {
@@ -23,40 +42,58 @@ function seededDelay(seed: number): number {
   return DELAYS[Math.abs(seed) % DELAYS.length];
 }
 
-function trainNumberFromSeed(seed: number, direction: Direction): string {
+function trainNumberFromSeed(seed: number, odd: boolean): string {
   const base = 20400 + (Math.abs(seed) % 40) * 2;
-  return String(direction === "north" ? base + 1 : base);
+  return String(odd ? base + 1 : base);
 }
 
 export function demoLiveTrains(now: number = Date.now()): LiveTrain[] {
   const trains: LiveTrain[] = [];
 
-  for (const direction of ["north", "south"] as const) {
-    const phase = direction === "north" ? 0 : 14 * 60_000;
-    for (let k = 0; k < 3; k++) {
-      const start =
-        Math.floor((now - phase) / HEADWAY_MS) * HEADWAY_MS + phase - k * HEADWAY_MS;
-      const t = (now - start) / JOURNEY_MS;
-      if (t < 0 || t > 1) continue;
+  for (const [lineId, cfg] of Object.entries(LINE_CONFIG) as [LineId, typeof LINE_CONFIG.brenner][]) {
+    const line = getLine(lineId);
+    const endName = NET_STATIONS[line.stationKeys[line.stationKeys.length - 1]].name;
+    const startName = NET_STATIONS[line.stationKeys[0]].name;
 
-      const seed = Math.floor(start / HEADWAY_MS);
-      const frac = direction === "north" ? t : 1 - t;
-      const dests = direction === "north" ? NORTH_DESTS : SOUTH_DESTS;
+    for (const heading of [1, -1] as const) {
+      const phase = heading === 1 ? 0 : 14 * 60_000;
+      const count = lineId === "brenner" ? 3 : 2;
+      for (let k = 0; k < count; k++) {
+        const start =
+          Math.floor((now - phase) / cfg.headwayMs) * cfg.headwayMs + phase - k * cfg.headwayMs;
+        const t = (now - start) / cfg.journeyMs;
+        if (t < 0 || t > 1) continue;
 
-      const atStation =
-        CORRIDOR.find((cs) => Math.abs(cs.frac - frac) < 0.015)?.name ?? null;
+        const seed = Math.floor(start / cfg.headwayMs) + lineId.length * 7;
+        const frac = heading === 1 ? t : 1 - t;
+        const dests = heading === 1 ? cfg.toEnd : cfg.toStart;
 
-      trains.push({
-        trainNumber: trainNumberFromSeed(seed, direction),
-        category: seed % 4 === 0 ? "RV" : "R",
-        destination: dests[Math.abs(seed) % dests.length],
-        delayMinutes: seededDelay(seed),
-        direction,
-        frac,
-        atStation,
-        nextStation: nextStationFromFrac(frac, direction),
-        lastSeenAt: atStation ?? (direction === "north" ? "Bozen" : "Brixen"),
-      });
+        // Closest station marker when dwelling
+        const atIdx = line.fracs.findIndex((f) => Math.abs(f - frac) < 0.012);
+        const atStation = atIdx >= 0 ? NET_STATIONS[line.stationKeys[atIdx]].name : null;
+
+        const nextIdx =
+          heading === 1
+            ? line.fracs.findIndex((f) => f > frac + 0.012)
+            : line.fracs.length - 1 - [...line.fracs].reverse().findIndex((f) => f < frac - 0.012);
+        const nextStation =
+          nextIdx >= 0 && nextIdx < line.stationKeys.length
+            ? NET_STATIONS[line.stationKeys[nextIdx]].name
+            : null;
+
+        trains.push({
+          trainNumber: trainNumberFromSeed(seed, heading === 1),
+          category: seed % 4 === 0 ? "RV" : "REG",
+          destination: dests[Math.abs(seed) % dests.length],
+          delayMinutes: seededDelay(seed),
+          lineId,
+          frac,
+          heading,
+          atStation,
+          nextStation,
+          lastSeenAt: atStation ?? (heading === 1 ? startName : endName),
+        });
+      }
     }
   }
 
@@ -65,23 +102,25 @@ export function demoLiveTrains(now: number = Date.now()): LiveTrain[] {
 
 export function demoDepartures(stationKey: string, now: number = Date.now()): TrainDeparture[] {
   const north = stationKey === "BOLZANO";
-  const dests = north ? NORTH_DESTS : SOUTH_DESTS;
+  const dests = north
+    ? ["BRENNERO", "INNSBRUCK HBF", "BRESSANONE", "MERANO"]
+    : ["BOLZANO", "VERONA PORTA NUOVA", "TRENTO", "BOLOGNA C.LE"];
   const departures: TrainDeparture[] = [];
 
   let t = now + 4 * 60_000;
   for (let i = 0; i < 8; i++) {
-    const seed = Math.floor(t / HEADWAY_MS) + i;
+    const seed = Math.floor(t / (30 * 60_000)) + i;
     const delay = seededDelay(seed);
     const cancelled = i === 2; // one cancelled train for the preview
     departures.push({
-      trainNumber: trainNumberFromSeed(seed, north ? "north" : "south"),
-      category: seed % 4 === 0 ? "RV" : "R",
+      trainNumber: trainNumberFromSeed(seed, north),
+      category: seed % 4 === 0 ? "RV" : "REG",
       destination: dests[Math.abs(seed) % dests.length],
       scheduledTime: fmtTime(t),
       estimatedTime: delay > 0 && !cancelled ? fmtTime(t + delay * 60_000) : null,
       delayMinutes: cancelled ? 0 : delay,
       cancelled,
-      originId: north ? "S00219" : "S00269",
+      originId: north ? "S02026" : "S02014",
       platform: String(1 + (Math.abs(seed) % 4)),
       departureDateMs: null,
     });
@@ -92,24 +131,29 @@ export function demoDepartures(stationKey: string, now: number = Date.now()): Tr
 }
 
 export function demoTrainStatus(trainNumber: string, now: number = Date.now()): TrainStatus {
+  const line = getLine("brenner");
+  const corridorKeys = line.stationKeys.slice(
+    line.stationKeys.indexOf("BZ"),
+    line.stationKeys.indexOf("BX") + 1
+  );
   const north = Number(trainNumber) % 2 === 1;
-  const stations = north ? CORRIDOR : [...CORRIDOR].reverse();
+  const keys = north ? corridorKeys : [...corridorKeys].reverse();
   const delay = seededDelay(Number(trainNumber));
   const start = now - 18 * 60_000;
 
   return {
     trainNumber,
-    category: "R",
+    category: "REG",
     origin: north ? "Bolzano/Bozen" : "Bressanone/Brixen",
     destination: north ? "BRENNERO" : "BOLZANO",
     delayMinutes: delay,
     cancelled: false,
-    lastSeenAt: stations[3].name,
-    stops: stations.map((cs, i) => {
+    lastSeenAt: NET_STATIONS[keys[3]].name,
+    stops: keys.map((key, i) => {
       const sched = start + i * 5.5 * 60_000;
       const passed = sched + delay * 60_000 < now;
       return {
-        stationName: `${cs.nameIt}/${cs.name}`,
+        stationName: NET_STATIONS[key].name.toUpperCase(),
         scheduledArrival: fmtTime(sched),
         actualArrival: passed ? fmtTime(sched + delay * 60_000) : null,
         scheduledDeparture: fmtTime(sched + 60_000),
@@ -143,8 +187,8 @@ export function demoStats(now: number = Date.now()) {
     const seed = i * 7 + 3;
     const avgDelay = [1, 17, 3, 8, 2, 12, 5, 0, 22, 6][i];
     return {
-      trainNumber: trainNumberFromSeed(seed, i % 2 === 0 ? "north" : "south"),
-      category: i % 4 === 0 ? "RV" : "R",
+      trainNumber: trainNumberFromSeed(seed, i % 2 === 0),
+      category: i % 4 === 0 ? "RV" : "REG",
       direction: i % 2 === 0 ? "BZ_BX" : "BX_BZ",
       totalRecorded: 140 + i * 11,
       onTimePercent: Math.max(20, 96 - avgDelay * 3 - (i % 3) * 4),

@@ -1,8 +1,11 @@
 const BASE = "https://www.viaggiatreno.it/infomobilita/resteasy/viaggiatreno";
 
 export const STATIONS = {
-  BOLZANO: { id: "S00219", name: "Bolzano/Bozen" },
-  BRESSANONE: { id: "S00269", name: "Bressanone/Brixen" },
+  BOLZANO: { id: "S02026", name: "Bolzano/Bozen" },
+  BRESSANONE: { id: "S02014", name: "Bressanone/Brixen" },
+  FORTEZZA: { id: "S02011", name: "Fortezza/Franzensfeste" },
+  MERANO: { id: "S02216", name: "Merano/Meran" },
+  BRUNICO: { id: "S02107", name: "Brunico/Bruneck" },
 } as const;
 
 export type StationKey = keyof typeof STATIONS;
@@ -65,6 +68,32 @@ function parseTime(ts: number | null): string | null {
   });
 }
 
+// Viaggiatreno expects a JS Date.toString()-style timestamp in Italian local time,
+// e.g. "Fri Jun 12 2026 13:05:00 GMT+0200"
+function romeDateString(): string {
+  const now = new Date();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Rome",
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value])
+  );
+  const offset =
+    new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Rome", timeZoneName: "longOffset" })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT+02:00";
+  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.year} ${parts.hour}:${parts.minute}:${parts.second} ${offset.replace(":", "")}`;
+}
+
 // Raw Viaggiatreno departure shape (partial)
 interface RawDeparture {
   numeroTreno: number;
@@ -91,11 +120,7 @@ interface RawArrival {
 }
 
 export async function fetchDepartures(stationId: string): Promise<TrainDeparture[]> {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const dateStr = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
-
-  const url = `${BASE}/partenze/${stationId}/${encodeURIComponent(dateStr)}`;
+  const url = `${BASE}/partenze/${stationId}/${encodeURIComponent(romeDateString())}`;
   const res = await fetch(url, { next: { revalidate: 60 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
@@ -122,11 +147,7 @@ export async function fetchDepartures(stationId: string): Promise<TrainDeparture
 }
 
 export async function fetchArrivals(stationId: string): Promise<TrainArrival[]> {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const dateStr = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
-
-  const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(dateStr)}`;
+  const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(romeDateString())}`;
   const res = await fetch(url, { next: { revalidate: 60 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 

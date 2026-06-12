@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { CORRIDOR, LiveTrain } from "@/lib/route";
+import {
+  CORRIDOR_KEYS,
+  LINES,
+  LiveTrain,
+  NET_STATIONS,
+  pointOnLine,
+} from "@/lib/route";
 import { withDemo } from "@/lib/clientDemo";
 import { DelayBadge } from "./DelayBadge";
-import { RefreshCw, X, ArrowUp, ArrowDown } from "lucide-react";
+import { RefreshCw, X, Navigation } from "lucide-react";
 
 const REFRESH_INTERVAL = 30_000;
-
-// Stylized Eisack valley route, Bozen bottom-left → Brixen top-right
-const RAIL_PATH =
-  "M 70 510 C 130 500, 158 478, 172 440 C 186 402, 180 372, 194 338 C 208 304, 232 286, 246 254 C 258 228, 261 206, 273 178 C 287 144, 301 116, 326 76";
 
 function delayHex(delay: number): string {
   if (delay === 0) return "#34d399";
@@ -20,45 +22,18 @@ function delayHex(delay: number): string {
   return "#f87171";
 }
 
-// Label placement per station key: [dx, dy, anchor]
-const LABEL_POS: Record<string, [number, number, "start" | "end"]> = {
-  BZ: [16, 5, "start"],
-  BL: [14, 4, "start"],
-  AT: [-14, 4, "end"],
-  WB: [16, 4, "start"],
-  KL: [-16, 4, "end"],
-  AB: [14, 4, "start"],
-  BX: [16, 4, "start"],
-};
-
-interface Point {
-  x: number;
-  y: number;
+function polyline(keys: string[]): string {
+  return keys
+    .map((k, i) => `${i === 0 ? "M" : "L"} ${NET_STATIONS[k].x} ${NET_STATIONS[k].y}`)
+    .join(" ");
 }
 
 export function LiveMap() {
-  const pathRef = useRef<SVGPathElement>(null);
-  const [pathLength, setPathLength] = useState<number | null>(null);
   const [trains, setTrains] = useState<LiveTrain[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selected, setSelected] = useState<LiveTrain | null>(null);
-
-  useEffect(() => {
-    if (pathRef.current) setPathLength(pathRef.current.getTotalLength());
-  }, []);
-
-  const pointAt = useCallback(
-    (frac: number): Point => {
-      if (!pathRef.current || pathLength === null) return { x: 0, y: 0 };
-      const p = pathRef.current.getPointAtLength(
-        Math.min(1, Math.max(0, frac)) * pathLength
-      );
-      return { x: p.x, y: p.y };
-    },
-    [pathLength]
-  );
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -68,7 +43,6 @@ export function LiveMap() {
       const data = await res.json();
       setTrains(data.trains ?? []);
       setLastUpdated(new Date());
-      // Keep the selected train's data fresh
       setSelected((prev) =>
         prev
           ? (data.trains as LiveTrain[]).find((t) => t.trainNumber === prev.trainNumber) ?? null
@@ -88,19 +62,15 @@ export function LiveMap() {
     return () => clearInterval(id);
   }, [load]);
 
-  const ready = pathLength !== null;
-
   return (
     <div className="relative">
       {/* Header row */}
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
-          {trains.length > 0 && (
-            <span className="text-zinc-400 font-medium">
-              {trains.length === 1 ? "1 Zug" : `${trains.length} Züge`} unterwegs
-            </span>
-          )}
-        </div>
+        <span className="text-xs text-zinc-400 font-medium">
+          {trains.length > 0
+            ? `${trains.length === 1 ? "1 Zug" : `${trains.length} Züge`} in Südtirol unterwegs`
+            : ""}
+        </span>
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           {lastUpdated && (
             <span>
@@ -119,7 +89,7 @@ export function LiveMap() {
       </div>
 
       <div className="relative rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900 to-zinc-950 overflow-hidden">
-        <svg viewBox="0 0 390 560" className="w-full" role="img" aria-label="Live-Karte Bozen–Brixen">
+        <svg viewBox="0 0 390 640" className="w-full" role="img" aria-label="Live-Karte Südtirol">
           <defs>
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="3" result="blur" />
@@ -128,142 +98,153 @@ export function LiveMap() {
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
-            <linearGradient id="rail" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stopColor="#52525b" />
-              <stop offset="100%" stopColor="#a1a1aa" />
-            </linearGradient>
           </defs>
 
           {/* Mountain ridges (decoration) */}
           <g stroke="white" strokeWidth="1.2" fill="none" opacity="0.05">
-            <path d="M 0 180 L 55 120 L 95 165 L 150 95 L 200 150" />
-            <path d="M 200 120 L 255 60 L 300 110 L 355 45 L 390 85" />
-            <path d="M 0 360 L 40 300 L 90 350 L 130 310" />
-            <path d="M 280 330 L 330 270 L 370 320 L 390 300" />
+            <path d="M 20 200 L 70 140 L 110 185 L 160 115" />
+            <path d="M 250 280 L 300 230 L 340 270 L 380 225" />
+            <path d="M 30 530 L 70 480 L 105 520" />
+            <path d="M 280 60 L 320 25 L 355 60 L 385 35" />
+            <path d="M 240 480 L 290 420 L 330 465 L 370 420" />
           </g>
-          {/* Eisack river hint */}
-          <path
-            d="M 86 526 C 142 514, 172 488, 186 446 C 200 408, 192 376, 208 340 C 222 306, 246 290, 258 260 C 270 232, 272 208, 286 182 C 300 150, 314 124, 338 88"
-            stroke="#38bdf8"
-            strokeWidth="5"
-            fill="none"
-            opacity="0.06"
-          />
 
-          {/* Rail line */}
-          <path d={RAIL_PATH} stroke="black" strokeWidth="7" fill="none" opacity="0.4" />
-          <motion.path
-            ref={pathRef}
-            d={RAIL_PATH}
-            stroke="url(#rail)"
-            strokeWidth="2.5"
-            fill="none"
-            strokeLinecap="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 1.4, ease: "easeInOut" }}
-          />
-          {/* Moving shimmer along the line */}
+          {/* Vinschgau stub (no live data) */}
           <path
-            d={RAIL_PATH}
-            stroke="white"
-            strokeWidth="2.5"
+            d="M 54 356 L 24 342"
+            stroke="#3f3f46"
+            strokeWidth="2"
+            strokeDasharray="3 4"
             fill="none"
+          />
+          <text x="16" y="326" fontSize="8" className="fill-zinc-600">
+            Vinschgau · keine Live-Daten
+          </text>
+
+          {/* Rail lines */}
+          {LINES.map((line) => (
+            <g key={line.id}>
+              <path
+                d={polyline(line.stationKeys)}
+                stroke="black"
+                strokeWidth="6"
+                fill="none"
+                opacity="0.35"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <motion.path
+                d={polyline(line.stationKeys)}
+                stroke="#52525b"
+                strokeWidth="2"
+                fill="none"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+              />
+            </g>
+          ))}
+
+          {/* Home corridor highlight: Bozen–Brixen */}
+          <path
+            d={polyline(CORRIDOR_KEYS)}
+            stroke="white"
+            strokeWidth="3"
+            fill="none"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+          <path
+            d={polyline(CORRIDOR_KEYS)}
+            stroke="white"
+            strokeWidth="3"
+            fill="none"
+            strokeLinejoin="round"
             strokeLinecap="round"
             strokeDasharray="3 60"
-            opacity="0.35"
+            opacity="0.5"
             className="animate-[dash_4s_linear_infinite]"
           />
 
           {/* Stations */}
-          {ready &&
-            CORRIDOR.map((cs, i) => {
-              const p = pointAt(cs.frac);
-              const [dx, dy, anchor] = LABEL_POS[cs.key] ?? [14, 4, "start"];
-              return (
-                <motion.g
-                  key={cs.key}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3 + i * 0.12 }}
+          {Object.values(NET_STATIONS).map((st, i) => (
+            <motion.g
+              key={st.key}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 + i * 0.03 }}
+            >
+              {st.major ? (
+                <>
+                  <circle cx={st.x} cy={st.y} r="6.5" fill="#09090b" stroke="white" strokeWidth="2" />
+                  <circle cx={st.x} cy={st.y} r="2.2" fill="white" />
+                </>
+              ) : (
+                <circle cx={st.x} cy={st.y} r="2.5" fill="#27272a" stroke="#71717a" strokeWidth="1" />
+              )}
+              {st.label && (
+                <text
+                  x={st.x + st.label[0]}
+                  y={st.y + st.label[1]}
+                  textAnchor={st.label[2]}
+                  className={st.major ? "fill-white font-semibold" : "fill-zinc-400"}
+                  fontSize={st.major ? 13 : 10}
                 >
-                  {cs.major ? (
-                    <>
-                      <circle cx={p.x} cy={p.y} r="7" fill="#09090b" stroke="white" strokeWidth="2" />
-                      <circle cx={p.x} cy={p.y} r="2.5" fill="white" />
-                    </>
-                  ) : (
-                    <circle cx={p.x} cy={p.y} r="3" fill="#3f3f46" stroke="#71717a" strokeWidth="1" />
-                  )}
-                  <text
-                    x={p.x + dx}
-                    y={p.y + dy}
-                    textAnchor={anchor}
-                    className={cs.major ? "fill-white font-semibold" : "fill-zinc-500"}
-                    fontSize={cs.major ? 14 : 10}
-                  >
-                    {cs.name}
-                  </text>
-                </motion.g>
-              );
-            })}
+                  {st.name}
+                </text>
+              )}
+            </motion.g>
+          ))}
 
           {/* Trains */}
-          {ready &&
-            trains.map((train) => {
-              const p = pointAt(train.frac);
-              const color = delayHex(train.delayMinutes);
-              const isSelected = selected?.trainNumber === train.trainNumber;
-              return (
-                <motion.g
-                  key={train.trainNumber}
-                  initial={false}
-                  animate={{ x: p.x, y: p.y }}
-                  transition={{ type: "spring", stiffness: 40, damping: 18 }}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setSelected(isSelected ? null : train)}
+          {trains.map((train) => {
+            const p = pointOnLine(train.lineId, train.frac);
+            const color = delayHex(train.delayMinutes);
+            const isSelected = selected?.trainNumber === train.trainNumber;
+            const angle = train.heading === 1 ? p.angle : p.angle + 180;
+            return (
+              <motion.g
+                key={train.trainNumber}
+                initial={false}
+                animate={{ x: p.x, y: p.y }}
+                transition={{ type: "spring", stiffness: 40, damping: 18 }}
+                style={{ cursor: "pointer" }}
+                onClick={() => setSelected(isSelected ? null : train)}
+              >
+                <motion.circle
+                  r="7"
+                  fill={color}
+                  initial={{ opacity: 0.45, scale: 1 }}
+                  animate={{ opacity: 0, scale: 2.4 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                />
+                <circle
+                  r={isSelected ? 8 : 6.5}
+                  fill={color}
+                  stroke="#09090b"
+                  strokeWidth="2"
+                  filter="url(#glow)"
+                />
+                {/* Direction arrow */}
+                <g transform={`rotate(${angle})`}>
+                  <path d="M -2.5 -3 L 3.5 0 L -2.5 3 Z" fill="#09090b" />
+                </g>
+                {/* Number tag */}
+                <text
+                  y={-11}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fontWeight="600"
+                  fill={color}
                 >
-                  {/* Pulse */}
-                  <motion.circle
-                    r="8"
-                    fill={color}
-                    initial={{ opacity: 0.45, scale: 1 }}
-                    animate={{ opacity: 0, scale: 2.4 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
-                  />
-                  <circle
-                    r={isSelected ? 9 : 7}
-                    fill={color}
-                    stroke="#09090b"
-                    strokeWidth="2"
-                    filter="url(#glow)"
-                  />
-                  {/* Direction tick */}
-                  <text
-                    y={1.5}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize="8"
-                    fontWeight="bold"
-                    fill="#09090b"
-                  >
-                    {train.direction === "north" ? "▲" : "▼"}
-                  </text>
-                  {/* Number tag */}
-                  <g transform={`translate(${train.direction === "north" ? -12 : 12}, 0)`}>
-                    <text
-                      textAnchor={train.direction === "north" ? "end" : "start"}
-                      dominantBaseline="middle"
-                      fontSize="10"
-                      fontWeight="600"
-                      fill={color}
-                    >
-                      {train.category} {train.trainNumber}
-                    </text>
-                  </g>
-                </motion.g>
-              );
-            })}
+                  {train.trainNumber}
+                </text>
+              </motion.g>
+            );
+          })}
         </svg>
 
         {/* Loading overlay */}
@@ -277,7 +258,7 @@ export function LiveMap() {
         {!loading && trains.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
             <div className="text-4xl mb-2">🦫</div>
-            <p className="text-sm text-zinc-400 font-medium">Gerade keine Züge im Tal</p>
+            <p className="text-sm text-zinc-400 font-medium">Gerade keine Züge unterwegs</p>
             <p className="text-xs text-zinc-600 mt-1">Der Biber hält trotzdem Wache</p>
           </div>
         )}
@@ -298,21 +279,24 @@ export function LiveMap() {
                     <span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md">
                       {selected.category} {selected.trainNumber}
                     </span>
-                    <span className="text-xs text-zinc-500 flex items-center gap-0.5">
-                      {selected.direction === "north" ? (
-                        <><ArrowUp className="w-3 h-3" /> Richtung Brixen</>
-                      ) : (
-                        <><ArrowDown className="w-3 h-3" /> Richtung Bozen</>
-                      )}
+                    <span className="text-xs text-zinc-500 flex items-center gap-1">
+                      <Navigation className="w-3 h-3" />
+                      {selected.lineId === "brenner"
+                        ? "Brennerlinie"
+                        : selected.lineId === "pustertal"
+                        ? "Pustertal"
+                        : "Meraner Linie"}
                     </span>
                   </div>
                   <div className="text-white font-semibold truncate">→ {selected.destination}</div>
                   <div className="text-xs text-zinc-400 mt-1">
-                    {selected.atStation
-                      ? <>Hält in <span className="text-white">{selected.atStation}</span></>
-                      : selected.nextStation
-                      ? <>Nächster Halt: <span className="text-white">{selected.nextStation}</span></>
-                      : "Auf der Strecke"}
+                    {selected.atStation ? (
+                      <>Hält in <span className="text-white">{selected.atStation}</span></>
+                    ) : selected.nextStation ? (
+                      <>Nächster Halt: <span className="text-white">{selected.nextStation}</span></>
+                    ) : (
+                      "Auf der Strecke"
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
