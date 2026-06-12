@@ -1,5 +1,12 @@
 const BASE = "https://www.viaggiatreno.it/infomobilita/resteasy/viaggiatreno";
 
+// Identify ourselves politely so RFI ops can distinguish this from abuse
+const FETCH_OPTS = {
+  headers: {
+    "User-Agent": "BOBR/1.0 (private non-commercial train punctuality project; +https://bobr-moritzmeys-projects.vercel.app/impressum)",
+  },
+};
+
 export const STATIONS = {
   BOLZANO: { id: "S02026", name: "Bolzano/Bozen" },
   BRESSANONE: { id: "S02014", name: "Bressanone/Brixen" },
@@ -121,7 +128,7 @@ interface RawArrival {
 
 export async function fetchDepartures(stationId: string): Promise<TrainDeparture[]> {
   const url = `${BASE}/partenze/${stationId}/${encodeURIComponent(romeDateString())}`;
-  const res = await fetch(url, { next: { revalidate: 60 } });
+  const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 30 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
   const data: RawDeparture[] = await res.json();
@@ -148,7 +155,7 @@ export async function fetchDepartures(stationId: string): Promise<TrainDeparture
 
 export async function fetchArrivals(stationId: string): Promise<TrainArrival[]> {
   const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(romeDateString())}`;
-  const res = await fetch(url, { next: { revalidate: 60 } });
+  const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 30 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
   const data: RawArrival[] = await res.json();
@@ -195,7 +202,7 @@ export async function fetchTrainStatus(
   departureDate: string
 ): Promise<TrainStatus> {
   const url = `${BASE}/andamentoTreno/${originId}/${trainNumber}/${departureDate}`;
-  const res = await fetch(url, { next: { revalidate: 30 } });
+  const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 30 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
   const d: RawTrainStatus = await res.json();
@@ -225,7 +232,7 @@ export async function fetchTrainStatus(
 
 export async function resolveTrainOrigin(trainNumber: string): Promise<string | null> {
   const url = `${BASE}/cercaNumeroTrenoTrenoAutocomplete/${trainNumber}`;
-  const res = await fetch(url, { next: { revalidate: 3600 } });
+  const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 3600 } });
   if (!res.ok) return null;
   const text = await res.text();
   // Response format: "R 12345 - ORIGIN|ORIGIN_ID-12345\n"

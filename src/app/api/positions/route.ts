@@ -30,8 +30,9 @@ export async function GET(req: NextRequest) {
       lastSeenAt: t.status.lastSeenAt,
     }));
 
+  // CDN-cache briefly: upstream load stays constant regardless of visitors
   return NextResponse.json(
     { trains, updatedAt: new Date().toISOString() },
-    { headers: { "Cache-Control": "no-store" } }
+    { headers: { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=40" } }
   );
 }

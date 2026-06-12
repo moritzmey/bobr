@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   try {
     const departures = await fetchDepartures(stationId);
     return NextResponse.json(departures, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" },
     });
   } catch (err) {
     console.error("Trenitalia fetch error:", err);

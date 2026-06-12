@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   try {
     const status = await fetchTrainStatus(originId, trainNumber, date);
     return NextResponse.json(status, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=40" },
     });
   } catch (err) {
     console.error("Train status error:", err);

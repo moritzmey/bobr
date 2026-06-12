@@ -17,6 +17,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Night pause: no trains run roughly 01:00–04:30, spare the API
+  const romeHour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Rome",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date())
+  );
+  if (romeHour >= 1 && romeHour < 5) {
+    return NextResponse.json({ ok: true, skipped: "night pause" });
+  }
+
   const supabase = getSupabaseAdmin();
   const errors: string[] = [];
   const nowIso = new Date().toISOString();
