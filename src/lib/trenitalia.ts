@@ -3,7 +3,7 @@ const BASE = "https://www.viaggiatreno.it/infomobilita/resteasy/viaggiatreno";
 // Identify ourselves politely so RFI ops can distinguish this from abuse
 const FETCH_OPTS = {
   headers: {
-    "User-Agent": "BOBR/1.0 (private non-commercial train punctuality project; +https://bobr-moritzmeys-projects.vercel.app/impressum)",
+    "User-Agent": "BOBR/1.0 (private non-commercial train punctuality project; +https://bobr.meyermoritz.com/impressum)",
   },
 };
 
