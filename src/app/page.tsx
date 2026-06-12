@@ -125,7 +125,7 @@ export default function Home() {
           <>
             <div className="mb-4">
               <h2 className="font-bold text-lg">Pünktlichkeits-Statistik</h2>
-              <p className="text-sm text-zinc-500 mt-0.5">Letzte 30 Tage · Strecke BZ ↔ BX</p>
+              <p className="text-sm text-zinc-500 mt-0.5">Letzte 30 Tage · Bozen ↔ Brixen</p>
             </div>
             <StatsView />
           </>

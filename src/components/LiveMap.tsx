@@ -10,6 +10,7 @@ import {
   pointOnLine,
 } from "@/lib/route";
 import { withDemo } from "@/lib/clientDemo";
+import { isLongDistance } from "@/lib/categories";
 import { DelayBadge } from "./DelayBadge";
 import { RefreshCw, X, Navigation } from "lucide-react";
 
@@ -221,26 +222,41 @@ export function LiveMap() {
                   animate={{ opacity: 0, scale: 2.4 }}
                   transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
                 />
-                <circle
-                  r={isSelected ? 8 : 6.5}
-                  fill={color}
-                  stroke="#09090b"
-                  strokeWidth="2"
-                  filter="url(#glow)"
-                />
+                {isLongDistance(train.category) ? (
+                  // Long-distance trains (EC/FR/IC) are diamonds
+                  <rect
+                    x={isSelected ? -6.5 : -5.5}
+                    y={isSelected ? -6.5 : -5.5}
+                    width={isSelected ? 13 : 11}
+                    height={isSelected ? 13 : 11}
+                    transform="rotate(45)"
+                    fill={color}
+                    stroke="#09090b"
+                    strokeWidth="2"
+                    filter="url(#glow)"
+                  />
+                ) : (
+                  <circle
+                    r={isSelected ? 8 : 6.5}
+                    fill={color}
+                    stroke="#09090b"
+                    strokeWidth="2"
+                    filter="url(#glow)"
+                  />
+                )}
                 {/* Direction arrow */}
                 <g transform={`rotate(${angle})`}>
                   <path d="M -2.5 -3 L 3.5 0 L -2.5 3 Z" fill="#09090b" />
                 </g>
                 {/* Number tag */}
                 <text
-                  y={-11}
+                  y={-12}
                   textAnchor="middle"
                   fontSize="9"
                   fontWeight="600"
                   fill={color}
                 >
-                  {train.trainNumber}
+                  {isLongDistance(train.category) ? `${train.category} ${train.trainNumber}` : train.trainNumber}
                 </text>
               </motion.g>
             );
@@ -328,6 +344,9 @@ export function LiveMap() {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full" style={{ background: "#f87171" }} /> mehr
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rotate-45 bg-zinc-400" /> EC/FR
         </span>
       </div>
     </div>

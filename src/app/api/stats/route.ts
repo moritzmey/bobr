@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase, TrainSnapshotRow } from "@/lib/supabase";
+import { getSupabase, TrainRunRow } from "@/lib/supabase";
 import { demoStats } from "@/lib/demo";
 
 export async function GET(req: NextRequest) {
@@ -9,67 +9,78 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const supabase = getSupabase();
-
-  // Last 30 days
   const since = new Date();
   since.setDate(since.getDate() - 30);
+  const sinceDate = since.toISOString().slice(0, 10);
 
-  const { data, error } = await supabase
-    .from("train_snapshots")
-    .select("train_number, category, direction, delay_minutes, cancelled, recorded_at")
-    .gte("recorded_at", since.toISOString())
-    .order("recorded_at", { ascending: false });
+  // Collected network-wide, displayed corridor-only
+  const { data, error } = await getSupabase()
+    .from("train_runs")
+    .select("*")
+    .eq("corridor", true)
+    .gte("service_date", sinceDate);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Aggregate per train
+  const runs = (data ?? []) as TrainRunRow[];
+
+  // Per-train aggregation
   const byTrain: Record<
     string,
-    { total: number; delayed: number; cancelled: number; totalDelay: number; direction: string; category: string }
+    {
+      total: number;
+      delayed: number;
+      cancelled: number;
+      totalDelay: number;
+      category: string;
+      route: string;
+    }
   > = {};
 
-  for (const row of (data ?? []) as TrainSnapshotRow[]) {
-    const key = row.train_number;
+  for (const run of runs) {
+    const key = run.train_number;
     if (!byTrain[key]) {
       byTrain[key] = {
         total: 0,
         delayed: 0,
         cancelled: 0,
         totalDelay: 0,
-        direction: row.direction,
-        category: row.category,
+        category: run.category,
+        route: run.origin && run.destination ? `${run.origin} → ${run.destination}` : "",
       };
     }
     byTrain[key].total++;
-    if (row.cancelled) byTrain[key].cancelled++;
-    if (row.delay_minutes > 5) byTrain[key].delayed++;
-    byTrain[key].totalDelay += row.delay_minutes;
+    if (run.cancelled) byTrain[key].cancelled++;
+    else if (run.final_delay > 5) byTrain[key].delayed++;
+    byTrain[key].totalDelay += run.cancelled ? 0 : run.final_delay;
   }
 
   const trains = Object.entries(byTrain).map(([number, s]) => ({
     trainNumber: number,
     category: s.category,
-    direction: s.direction,
+    route: s.route,
     totalRecorded: s.total,
     onTimePercent:
       s.total > 0
         ? Math.round(((s.total - s.delayed - s.cancelled) / s.total) * 100)
         : null,
-    avgDelay: s.total > 0 ? Math.round(s.totalDelay / s.total) : 0,
+    avgDelay:
+      s.total - s.cancelled > 0 ? Math.round(s.totalDelay / (s.total - s.cancelled)) : 0,
     cancelledCount: s.cancelled,
   }));
 
-  // Daily delay average for chart
+  // Daily averages
   const byDay: Record<string, { count: number; totalDelay: number; cancelled: number }> = {};
-  for (const row of (data ?? []) as TrainSnapshotRow[]) {
-    const day = row.recorded_at.slice(0, 10);
-    if (!byDay[day]) byDay[day] = { count: 0, totalDelay: 0, cancelled: 0 };
-    byDay[day].count++;
-    byDay[day].totalDelay += row.delay_minutes;
-    if (row.cancelled) byDay[day].cancelled++;
+  for (const run of runs) {
+    if (!byDay[run.service_date]) byDay[run.service_date] = { count: 0, totalDelay: 0, cancelled: 0 };
+    if (run.cancelled) {
+      byDay[run.service_date].cancelled++;
+    } else {
+      byDay[run.service_date].count++;
+      byDay[run.service_date].totalDelay += run.final_delay;
+    }
   }
 
   const daily = Object.entries(byDay)

@@ -1,6 +1,7 @@
 "use client";
 
 import { TrainDeparture } from "@/lib/trenitalia";
+import { isLongDistance } from "@/lib/categories";
 import { DelayBadge } from "./DelayBadge";
 import { Train, MapPin, Clock } from "lucide-react";
 import { useState } from "react";
@@ -32,7 +33,13 @@ export function TrainCard({ train, stationId }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-medium text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md">
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-md ${
+                  isLongDistance(train.category)
+                    ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                    : "bg-zinc-800 text-zinc-400"
+                }`}
+              >
                 {train.category} {train.trainNumber}
               </span>
               {train.platform && (

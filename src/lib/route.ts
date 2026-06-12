@@ -87,6 +87,37 @@ export function getLine(id: LineId): RailLine {
 // The Bozen–Brixen home corridor, highlighted on the map
 export const CORRIDOR_KEYS = ["BZ", "BL", "AT", "WB", "KL", "AB", "BX"];
 
+const brennerLine = () => LINES.find((l) => l.id === "brenner")!;
+
+export function corridorFracRange(): [number, number] {
+  const line = brennerLine();
+  return [
+    line.fracs[line.stationKeys.indexOf("BZ")],
+    line.fracs[line.stationKeys.indexOf("BX")],
+  ];
+}
+
+export function isOnCorridor(lineId: LineId, frac: number): boolean {
+  if (lineId !== "brenner") return false;
+  const [lo, hi] = corridorFracRange();
+  return frac >= lo - 0.005 && frac <= hi + 0.005;
+}
+
+// Heuristic corridor check from run endpoint names, for trains where the
+// stop list is unavailable (e.g. cancelled before departure)
+const NORTH_ENDPOINTS = ["BRESSANONE", "BRIXEN", "FORTEZZA", "VIPITENO", "BRENNERO", "INNSBRUCK", "MONACO", "MUNCHEN", "MÜNCHEN", "LIENZ", "CANDIDO", "DOBBIACO", "BRUNICO"];
+const SOUTH_ENDPOINTS = ["BOLZANO", "BOZEN", "MERANO", "TRENTO", "ROVERETO", "ALA", "VERONA", "BOLOGNA", "MILANO", "VENEZIA", "ROMA", "ANCONA", "NAPOLI", "SIBARI"];
+
+export function crossesCorridorByName(origin: string, destination: string): boolean {
+  const o = origin.toUpperCase();
+  const d = destination.toUpperCase();
+  const oNorth = NORTH_ENDPOINTS.some((k) => o.includes(k));
+  const oSouth = SOUTH_ENDPOINTS.some((k) => o.includes(k));
+  const dNorth = NORTH_ENDPOINTS.some((k) => d.includes(k));
+  const dSouth = SOUTH_ENDPOINTS.some((k) => d.includes(k));
+  return (oNorth && dSouth) || (oSouth && dNorth);
+}
+
 export function pointOnLine(lineId: LineId, frac: number): { x: number; y: number; angle: number } {
   const line = getLine(lineId);
   const f = Math.min(1, Math.max(0, frac));

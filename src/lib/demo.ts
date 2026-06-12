@@ -83,7 +83,8 @@ export function demoLiveTrains(now: number = Date.now()): LiveTrain[] {
 
         trains.push({
           trainNumber: trainNumberFromSeed(seed, heading === 1),
-          category: seed % 4 === 0 ? "RV" : "REG",
+          category:
+            lineId === "brenner" && seed % 5 === 0 ? "EC" : seed % 4 === 0 ? "RV" : "REG",
           destination: dests[Math.abs(seed) % dests.length],
           delayMinutes: seededDelay(seed),
           lineId,
@@ -114,7 +115,7 @@ export function demoDepartures(stationKey: string, now: number = Date.now()): Tr
     const cancelled = i === 2; // one cancelled train for the preview
     departures.push({
       trainNumber: trainNumberFromSeed(seed, north),
-      category: seed % 4 === 0 ? "RV" : "REG",
+      category: seed % 5 === 0 ? "EC" : seed % 4 === 0 ? "RV" : "REG",
       destination: dests[Math.abs(seed) % dests.length],
       scheduledTime: fmtTime(t),
       estimatedTime: delay > 0 && !cancelled ? fmtTime(t + delay * 60_000) : null,
@@ -183,13 +184,23 @@ export function demoStats(now: number = Date.now()) {
     });
   }
 
+  // Corridor-crossing routes only (display scope is Bozen–Brixen)
+  const routes = [
+    ["Bolzano", "Brennero"],
+    ["Merano", "Brennero"],
+    ["Brennero", "Merano"],
+    ["Bolzano", "Bressanone"],
+    ["Bressanone", "Verona Porta Nuova"],
+  ];
+
   const trains = Array.from({ length: 10 }, (_, i) => {
     const seed = i * 7 + 3;
     const avgDelay = [1, 17, 3, 8, 2, 12, 5, 0, 22, 6][i];
+    const [o, d] = routes[i % routes.length];
     return {
       trainNumber: trainNumberFromSeed(seed, i % 2 === 0),
-      category: i % 4 === 0 ? "RV" : "REG",
-      direction: i % 2 === 0 ? "BZ_BX" : "BX_BZ",
+      category: i % 5 === 0 ? "EC" : i % 4 === 0 ? "RV" : "REG",
+      route: `${o} → ${d}`,
       totalRecorded: 140 + i * 11,
       onTimePercent: Math.max(20, 96 - avgDelay * 3 - (i % 3) * 4),
       avgDelay,
@@ -198,4 +209,38 @@ export function demoStats(now: number = Date.now()) {
   });
 
   return { trains, daily };
+}
+
+export function demoLeaderboard() {
+  // Corridor-crossing routes only (display scope is Bozen–Brixen)
+  const routes: [string, string, string, string][] = [
+    ["Brennero", "Merano", "06:37", "08:23"],
+    ["Bolzano", "Brennero", "07:02", "08:19"],
+    ["Bressanone", "Bolzano", "06:31", "07:09"],
+    ["Bressanone", "Verona Porta Nuova", "17:32", "19:05"],
+    ["Bolzano", "S.Candido", "12:08", "14:21"],
+    ["S.Candido", "Bolzano", "16:39", "18:54"],
+    ["Brennero", "Bolzano", "18:41", "19:58"],
+    ["Bolzano", "Bressanone", "07:51", "08:24"],
+  ];
+
+  return Array.from({ length: 14 }, (_, i) => {
+    const [origin, destination, dep, arr] = routes[i % routes.length];
+    const avgDelay = [22, 17, 13, 11, 9, 8, 6, 5, 4, 3, 2, 1, 1, 0][i];
+    const runs = 24 + (i % 5) * 2;
+    const cancelledCount = i === 1 ? 4 : i === 4 ? 1 : 0;
+    return {
+      trainNumber: trainNumberFromSeed(i * 11 + 5, i % 2 === 0),
+      category: i % 6 === 0 ? "EC" : i % 4 === 0 ? "RV" : "REG",
+      origin,
+      destination,
+      schedDep: dep,
+      schedArr: arr,
+      runs,
+      totalDelay: avgDelay * (runs - cancelledCount),
+      avgDelay,
+      maxDelay: avgDelay * 3 + 5,
+      cancelledCount,
+    };
+  });
 }

@@ -7,7 +7,7 @@ import { TrendingUp, TrendingDown, Minus, AlertOctagon, Loader2 } from "lucide-r
 interface TrainStat {
   trainNumber: string;
   category: string;
-  direction: string;
+  route: string;
   totalRecorded: number;
   onTimePercent: number | null;
   avgDelay: number;
@@ -129,9 +129,7 @@ export function StatsView() {
                   <span className="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md mr-2">
                     {t.category} {t.trainNumber}
                   </span>
-                  <span className="text-xs text-zinc-500">
-                    {t.direction === "BZ_BX" ? "BZ → BX" : "BX → BZ"}
-                  </span>
+                  <span className="text-xs text-zinc-500">{t.route}</span>
                 </div>
                 <div className="flex items-center gap-1 text-xs text-zinc-400">
                   {(t.onTimePercent ?? 0) >= 80 ? (
