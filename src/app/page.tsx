@@ -135,6 +135,10 @@ export default function Home() {
       {/* Footer */}
       <footer className="max-w-lg mx-auto px-4 pb-6 text-center text-xs text-zinc-700">
         Daten: Trenitalia · 🦫 BOBR schaut auf die Züge, damit du es nicht musst
+        <span className="mx-1.5">·</span>
+        <a href="/impressum" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
+          Impressum
+        </a>
       </footer>
     </div>
   );
