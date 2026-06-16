@@ -79,7 +79,10 @@ function parseTime(ts: number | null): string | null {
 }
 
 // Viaggiatreno expects a JS Date.toString()-style timestamp in Italian local time,
-// e.g. "Fri Jun 12 2026 13:05:00 GMT+0200"
+// e.g. "Fri Jun 12 2026 13:05:00 GMT+0200". Seconds are pinned to :00 so the
+// board URLs stay identical within a minute — that lets Next's data cache
+// (revalidate: 30) coalesce repeated/cache-busted requests instead of hitting
+// Viaggiatreno on every call. The boards are minute-granular anyway.
 function romeDateString(now: Date = new Date()): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
@@ -90,7 +93,6 @@ function romeDateString(now: Date = new Date()): string {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit",
       hourCycle: "h23",
     })
       .formatToParts(now)
@@ -100,7 +102,7 @@ function romeDateString(now: Date = new Date()): string {
     new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Rome", timeZoneName: "longOffset" })
       .formatToParts(now)
       .find((p) => p.type === "timeZoneName")?.value ?? "GMT+02:00";
-  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.year} ${parts.hour}:${parts.minute}:${parts.second} ${offset.replace(":", "")}`;
+  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.year} ${parts.hour}:${parts.minute}:00 ${offset.replace(":", "")}`;
 }
 
 // Raw Viaggiatreno departure shape (partial)
