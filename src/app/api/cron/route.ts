@@ -6,6 +6,7 @@ import {
   TrainObservationInsert,
   TrainRunRow,
   TrainRunUpsert,
+  TrainStopEventInsert,
 } from "@/lib/supabase";
 
 // Called by Vercel Cron every 5 minutes: snapshots every active train in
@@ -144,11 +145,50 @@ export async function GET(req: Request) {
     }
   }
 
+  // --- Stop events: the full per-stop journey for every active run.
+  // Persisted in full (network-wide) for future analysis; corridor path-delays
+  // are derived from this. Cancelled trains have no stop list, so they're absent.
+  const stopEvents: TrainStopEventInsert[] = [];
+  for (const t of trains) {
+    const serviceDate = serviceDateRome(t.departureDateMs);
+    t.status.stops.forEach((s, seq) => {
+      const arrDelay =
+        s.actArrMs != null && s.schedArrMs != null
+          ? Math.round((s.actArrMs - s.schedArrMs) / 60_000)
+          : null;
+      const depDelay =
+        s.actDepMs != null && s.schedDepMs != null
+          ? Math.round((s.actDepMs - s.schedDepMs) / 60_000)
+          : null;
+      stopEvents.push({
+        service_date: serviceDate,
+        train_number: t.trainNumber,
+        seq,
+        station_id: s.stationId || null,
+        station_name: s.stationName,
+        sched_arr: s.scheduledArrival,
+        act_arr: s.actualArrival,
+        arr_delay: arrDelay,
+        sched_dep: s.scheduledDeparture,
+        act_dep: s.actualDeparture,
+        dep_delay: depDelay,
+      });
+    });
+  }
+
+  if (stopEvents.length > 0) {
+    const { error } = await supabase
+      .from("train_stop_events")
+      .upsert(stopEvents, { onConflict: "service_date,train_number,seq" });
+    if (error) errors.push(`stop_events: ${error.message}`);
+  }
+
   return NextResponse.json({
     ok: errors.length === 0,
     errors,
     observations: observations.length,
     runs: runUpserts.size,
+    stopEvents: stopEvents.length,
     recordedAt: nowIso,
   });
 }

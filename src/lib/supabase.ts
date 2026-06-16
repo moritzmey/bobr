@@ -37,6 +37,23 @@ export interface TrainObservationRow {
 
 export type TrainObservationInsert = Omit<TrainObservationRow, "id" | "recorded_at">;
 
+export interface TrainStopEventRow {
+  service_date: string;
+  train_number: string;
+  seq: number;
+  station_id: string | null;
+  station_name: string;
+  sched_arr: string | null;
+  act_arr: string | null;
+  arr_delay: number | null;
+  sched_dep: string | null;
+  act_dep: string | null;
+  dep_delay: number | null;
+  updated_at: string;
+}
+
+export type TrainStopEventInsert = Omit<TrainStopEventRow, "updated_at">;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any, any, any>;
 

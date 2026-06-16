@@ -39,6 +39,7 @@ export function serviceDateRome(ms: number): string {
 export interface CollectedTrain {
   trainNumber: string;
   category: string; // from the boards; andamentoTreno often omits it
+  originId: string; // run origin id, needed to re-fetch andamentoTreno
   departureDateMs: number;
   status: TrainStatus;
   pos: NetPosition | null;
@@ -123,6 +124,7 @@ export async function collectLiveTrains(now: number = Date.now()): Promise<Colle
     trains.push({
       trainNumber: status.trainNumber,
       category: limited[i].category || status.category,
+      originId: limited[i].originId,
       departureDateMs: limited[i].departureDateMs,
       status,
       pos: computeNetworkPosition(status, now),

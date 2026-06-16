@@ -17,45 +17,46 @@ export interface NetStation {
   y: number;
   major: boolean;
   match: string[]; // tokens matched against Viaggiatreno stop names
+  id?: string; // Viaggiatreno station id (S0xxxx); enables departure/arrival lookups
   label?: [dx: number, dy: number, anchor: "start" | "middle" | "end"];
 }
 
 export const NET_STATIONS: Record<string, NetStation> = {
   // Brenner axis, south to north
-  SAL: { key: "SAL", name: "Salurn", x: 132, y: 612, major: false, match: ["SALORNO"], label: [-10, 4, "end"] },
-  EGN: { key: "EGN", name: "Neumarkt", x: 140, y: 580, major: false, match: ["EGNA"] },
-  AUE: { key: "AUE", name: "Auer", x: 146, y: 552, major: false, match: ["ORA"] },
-  BRA: { key: "BRA", name: "Branzoll", x: 150, y: 524, major: false, match: ["BRONZOLO"] },
-  LEI: { key: "LEI", name: "Leifers", x: 153, y: 498, major: false, match: ["LAIVES"] },
-  BZ: { key: "BZ", name: "Bozen", x: 158, y: 462, major: true, match: ["BOLZANO", "BOZEN"], label: [-14, 6, "end"] },
+  SAL: { key: "SAL", name: "Salurn", x: 132, y: 612, major: false, match: ["SALORNO"], id: "S02034", label: [-10, 4, "end"] },
+  EGN: { key: "EGN", name: "Neumarkt", x: 140, y: 580, major: false, match: ["EGNA"], id: "S02032" },
+  AUE: { key: "AUE", name: "Auer", x: 146, y: 552, major: false, match: ["ORA"], id: "S02031" },
+  BRA: { key: "BRA", name: "Branzoll", x: 150, y: 524, major: false, match: ["BRONZOLO"], id: "S02030" },
+  LEI: { key: "LEI", name: "Leifers", x: 153, y: 498, major: false, match: ["LAIVES"], id: "S02029" },
+  BZ: { key: "BZ", name: "Bozen", x: 158, y: 462, major: true, match: ["BOLZANO", "BOZEN"], id: "S02026", label: [-14, 6, "end"] },
   BL: { key: "BL", name: "Blumau", x: 192, y: 420, major: false, match: ["PRATO ISARCO", "BLUMAU"] },
   AT: { key: "AT", name: "Atzwang", x: 204, y: 390, major: false, match: ["CAMPODAZZO", "ATZWANG"] },
-  WB: { key: "WB", name: "Waidbruck", x: 212, y: 356, major: false, match: ["PONTE GARDENA", "WAIDBRUCK"] },
-  KL: { key: "KL", name: "Klausen", x: 220, y: 324, major: false, match: ["CHIUSA", "KLAUSEN"], label: [-12, 4, "end"] },
+  WB: { key: "WB", name: "Waidbruck", x: 212, y: 356, major: false, match: ["PONTE GARDENA", "WAIDBRUCK"], id: "S02020" },
+  KL: { key: "KL", name: "Klausen", x: 220, y: 324, major: false, match: ["CHIUSA", "KLAUSEN"], id: "S02017", label: [-12, 4, "end"] },
   AB: { key: "AB", name: "Albeins", x: 228, y: 286, major: false, match: ["ALBES", "ALBEINS"] },
-  BX: { key: "BX", name: "Brixen", x: 234, y: 258, major: true, match: ["BRESSANONE", "BRIXEN"], label: [14, 4, "start"] },
-  FF: { key: "FF", name: "Franzensfeste", x: 226, y: 210, major: true, match: ["FORTEZZA", "FRANZENSFESTE"], label: [-14, 4, "end"] },
-  FRE: { key: "FRE", name: "Freienfeld", x: 208, y: 162, major: false, match: ["CAMPO DI TRENS", "FREIENFELD"] },
-  ST: { key: "ST", name: "Sterzing", x: 198, y: 130, major: false, match: ["VIPITENO", "STERZING"], label: [-12, 4, "end"] },
-  GO: { key: "GO", name: "Gossensass", x: 196, y: 96, major: false, match: ["COLLE ISARCO", "GOSSENSASS"] },
-  BR: { key: "BR", name: "Brenner", x: 200, y: 56, major: true, match: ["BRENNERO", "BRENNER"], label: [12, 4, "start"] },
+  BX: { key: "BX", name: "Brixen", x: 234, y: 258, major: true, match: ["BRESSANONE", "BRIXEN"], id: "S02014", label: [14, 4, "start"] },
+  FF: { key: "FF", name: "Franzensfeste", x: 226, y: 210, major: true, match: ["FORTEZZA", "FRANZENSFESTE"], id: "S02011", label: [-14, 4, "end"] },
+  FRE: { key: "FRE", name: "Freienfeld", x: 208, y: 162, major: false, match: ["CAMPO DI TRENS", "FREIENFELD"], id: "S02007" },
+  ST: { key: "ST", name: "Sterzing", x: 198, y: 130, major: false, match: ["VIPITENO", "STERZING"], id: "S02006", label: [-12, 4, "end"] },
+  GO: { key: "GO", name: "Gossensass", x: 196, y: 96, major: false, match: ["COLLE ISARCO", "GOSSENSASS"], id: "S02005" },
+  BR: { key: "BR", name: "Brenner", x: 200, y: 56, major: true, match: ["BRENNERO", "BRENNER"], id: "S02001", label: [12, 4, "start"] },
 
   // Pustertal, west to east
-  MUE: { key: "MUE", name: "Mühlbach", x: 258, y: 200, major: false, match: ["RIO DI PUSTERIA", "RIO PUSTERIA", "MUHLBACH"] },
-  VIN: { key: "VIN", name: "Vintl", x: 284, y: 192, major: false, match: ["VANDOIES", "VINTL"] },
-  BRU: { key: "BRU", name: "Bruneck", x: 312, y: 180, major: true, match: ["BRUNICO", "BRUNECK"], label: [0, -12, "middle"] },
-  OLA: { key: "OLA", name: "Olang", x: 336, y: 166, major: false, match: ["VALDAORA", "OLANG"] },
-  WEL: { key: "WEL", name: "Welsberg", x: 352, y: 150, major: false, match: ["MONGUELFO", "WELSBERG"] },
-  VLB: { key: "VLB", name: "Niederdorf", x: 362, y: 140, major: false, match: ["VILLABASSA", "NIEDERDORF"] },
-  TOB: { key: "TOB", name: "Toblach", x: 370, y: 130, major: false, match: ["DOBBIACO", "TOBLACH"] },
-  INN: { key: "INN", name: "Innichen", x: 380, y: 116, major: true, match: ["CANDIDO", "INNICHEN", "VERSCIACO"], label: [-10, -8, "end"] },
+  MUE: { key: "MUE", name: "Mühlbach", x: 258, y: 200, major: false, match: ["RIO DI PUSTERIA", "RIO PUSTERIA", "MUHLBACH"], id: "S02102" },
+  VIN: { key: "VIN", name: "Vintl", x: 284, y: 192, major: false, match: ["VANDOIES", "VINTL"], id: "S02103" },
+  BRU: { key: "BRU", name: "Bruneck", x: 312, y: 180, major: true, match: ["BRUNICO", "BRUNECK"], id: "S02107", label: [0, -12, "middle"] },
+  OLA: { key: "OLA", name: "Olang", x: 336, y: 166, major: false, match: ["VALDAORA", "OLANG"], id: "S02110" },
+  WEL: { key: "WEL", name: "Welsberg", x: 352, y: 150, major: false, match: ["MONGUELFO", "WELSBERG"], id: "S02111" },
+  VLB: { key: "VLB", name: "Niederdorf", x: 362, y: 140, major: false, match: ["VILLABASSA", "NIEDERDORF"], id: "S02112" },
+  TOB: { key: "TOB", name: "Toblach", x: 370, y: 130, major: false, match: ["DOBBIACO", "TOBLACH"], id: "S02113" },
+  INN: { key: "INN", name: "Innichen", x: 380, y: 116, major: true, match: ["CANDIDO", "INNICHEN", "VERSCIACO"], id: "S02114", label: [-10, -8, "end"] },
 
   // Meran line, east to west
-  TER: { key: "TER", name: "Terlan", x: 120, y: 440, major: false, match: ["TERLANO", "TERLAN"] },
-  VIL: { key: "VIL", name: "Vilpian", x: 98, y: 424, major: false, match: ["VILPIANO", "VILPIAN"] },
-  GAR: { key: "GAR", name: "Gargazon", x: 80, y: 406, major: false, match: ["GARGAZZONE", "GARGAZON"] },
-  LAN: { key: "LAN", name: "Lana", x: 64, y: 384, major: false, match: ["LANA", "POSTAL", "BURGSTALL"] },
-  MER: { key: "MER", name: "Meran", x: 54, y: 356, major: true, match: ["MERANO", "MERAN"], label: [4, 22, "middle"] },
+  TER: { key: "TER", name: "Terlan", x: 120, y: 440, major: false, match: ["TERLANO", "TERLAN"], id: "S02223" },
+  VIL: { key: "VIL", name: "Vilpian", x: 98, y: 424, major: false, match: ["VILPIANO", "VILPIAN"], id: "S02222" },
+  GAR: { key: "GAR", name: "Gargazon", x: 80, y: 406, major: false, match: ["GARGAZZONE", "GARGAZON"], id: "S02218" },
+  LAN: { key: "LAN", name: "Lana", x: 64, y: 384, major: false, match: ["LANA", "POSTAL", "BURGSTALL"], id: "S02219" },
+  MER: { key: "MER", name: "Meran", x: 54, y: 356, major: true, match: ["MERANO", "MERAN"], id: "S02216", label: [4, 22, "middle"] },
 };
 
 export interface RailLine {
@@ -170,6 +171,9 @@ export interface LiveTrain {
   atStation: string | null;
   nextStation: string | null;
   lastSeenAt: string | null;
+  // Identifiers needed to fetch the full run (andamentoTreno) on demand
+  originId: string;
+  departureDateMs: number;
 }
 
 type PosState = "moving" | "dwell" | "waiting" | "linger";

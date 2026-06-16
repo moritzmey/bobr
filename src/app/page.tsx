@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { BeaverLogo } from "@/components/BeaverLogo";
-import { DepartureBoard } from "@/components/DepartureBoard";
-import { StatsView } from "@/components/StatsView";
+import { CorridorBoard } from "@/components/CorridorBoard";
+import { ReliabilityView } from "@/components/ReliabilityView";
 import { LiveMap } from "@/components/LiveMap";
-import { Leaderboard } from "@/components/Leaderboard";
-import { STATIONS } from "@/lib/trenitalia";
 import { isDemo } from "@/lib/clientDemo";
-import { BarChart3, Train, Map, Trophy } from "lucide-react";
+import { Train, Map, Trophy } from "lucide-react";
 
-type Tab = "map" | "departures" | "ranking" | "stats";
+type Tab = "map" | "departures" | "stats";
 type DirectionKey = "BOLZANO" | "BRESSANONE";
 
 export default function Home() {
@@ -21,8 +19,11 @@ export default function Home() {
   useEffect(() => {
     setDemo(isDemo());
     const wanted = new URLSearchParams(window.location.search).get("tab");
-    if (wanted && ["map", "departures", "ranking", "stats"].includes(wanted)) {
-      setTab(wanted as Tab);
+    // "ranking" and "stats" were merged into a single tab
+    if (wanted === "map" || wanted === "departures") {
+      setTab(wanted);
+    } else if (wanted === "stats" || wanted === "ranking") {
+      setTab("stats");
     }
   }, []);
 
@@ -68,16 +69,10 @@ export default function Home() {
             label="Abfahrten"
           />
           <TabButton
-            active={tab === "ranking"}
-            onClick={() => setTab("ranking")}
-            icon={<Trophy className="w-3.5 h-3.5" />}
-            label="Ranking"
-          />
-          <TabButton
             active={tab === "stats"}
             onClick={() => setTab("stats")}
-            icon={<BarChart3 className="w-3.5 h-3.5" />}
-            label="Stats"
+            icon={<Trophy className="w-3.5 h-3.5" />}
+            label="Statistik"
           />
         </div>
       </div>
@@ -111,25 +106,27 @@ export default function Home() {
                 Brixen → Bozen
               </button>
             </div>
-            <DepartureBoard
-              key={direction}
-              stationKey={direction}
-              stationId={STATIONS[direction].id}
-            />
+            {direction === "BOLZANO" ? (
+              <CorridorBoard
+                key="bz-bx"
+                fromKey="BOLZANO"
+                toKey="BRESSANONE"
+                fromLabel="Bozen"
+                toLabel="Brixen"
+              />
+            ) : (
+              <CorridorBoard
+                key="bx-bz"
+                fromKey="BRESSANONE"
+                toKey="BOLZANO"
+                fromLabel="Brixen"
+                toLabel="Bozen"
+              />
+            )}
           </>
         )}
 
-        {tab === "ranking" && <Leaderboard />}
-
-        {tab === "stats" && (
-          <>
-            <div className="mb-4">
-              <h2 className="font-bold text-lg">Pünktlichkeits-Statistik</h2>
-              <p className="text-sm text-zinc-500 mt-0.5">Letzte 30 Tage · Bozen ↔ Brixen</p>
-            </div>
-            <StatsView />
-          </>
-        )}
+        {tab === "stats" && <ReliabilityView />}
       </main>
 
       {/* Footer */}

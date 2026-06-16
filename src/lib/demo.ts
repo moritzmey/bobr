@@ -1,4 +1,5 @@
-import { TrainDeparture, TrainStatus } from "./trenitalia";
+import { CorridorTrain, TrainArrival, TrainDeparture, TrainStatus } from "./trenitalia";
+import { demoExpectedDelay } from "./clientDemo";
 import { getLine, LineId, LiveTrain, NET_STATIONS } from "./route";
 
 // Deterministic dummy data for previewing the UI without live APIs.
@@ -93,6 +94,8 @@ export function demoLiveTrains(now: number = Date.now()): LiveTrain[] {
           atStation,
           nextStation,
           lastSeenAt: atStation ?? (heading === 1 ? startName : endName),
+          originId: heading === 1 ? "S02026" : "S02014",
+          departureDateMs: 0,
         });
       }
     }
@@ -124,11 +127,73 @@ export function demoDepartures(stationKey: string, now: number = Date.now()): Tr
       originId: north ? "S02026" : "S02014",
       platform: String(1 + (Math.abs(seed) % 4)),
       departureDateMs: null,
+      scheduledMs: t,
     });
     t += (12 + (Math.abs(seed) % 14)) * 60_000;
   }
 
   return departures;
+}
+
+export function demoArrivals(stationKey: string, now: number = Date.now()): TrainArrival[] {
+  const origins = ["BRENNERO", "INNSBRUCK HBF", "BOLZANO", "MERANO", "VERONA PORTA NUOVA"];
+  const arrivals: TrainArrival[] = [];
+  let t = now + 6 * 60_000;
+  for (let i = 0; i < 8; i++) {
+    const seed = Math.floor(t / (30 * 60_000)) + i + 3;
+    const delay = seededDelay(seed);
+    arrivals.push({
+      trainNumber: trainNumberFromSeed(seed, i % 2 === 0),
+      category: seed % 5 === 0 ? "EC" : seed % 4 === 0 ? "RV" : "REG",
+      origin: origins[Math.abs(seed) % origins.length],
+      scheduledTime: fmtTime(t),
+      delayMinutes: delay,
+      cancelled: false,
+      originId: "S02026",
+      departureDateMs: null,
+      scheduledMs: t,
+    });
+    t += (12 + (Math.abs(seed) % 14)) * 60_000;
+  }
+  return arrivals;
+}
+
+export function demoCorridor(
+  from: string,
+  to: string,
+  now: number = Date.now()
+): CorridorTrain[] {
+  const north = from === "BOLZANO";
+  const dests = north
+    ? ["BRENNERO", "INNSBRUCK HBF", "BRESSANONE", "FORTEZZA"]
+    : ["BOLZANO", "VERONA PORTA NUOVA", "TRENTO", "BOLOGNA C.LE"];
+  const trains: CorridorTrain[] = [];
+  let t = now + 5 * 60_000;
+  for (let i = 0; i < 6; i++) {
+    const seed = Math.floor(t / (30 * 60_000)) + i;
+    const delay = seededDelay(seed);
+    const cancelled = i === 3;
+    const travelMs = (33 + (Math.abs(seed) % 6)) * 60_000;
+    const arrMs = t + travelMs;
+    trains.push({
+      trainNumber: trainNumberFromSeed(seed, north),
+      category: seed % 5 === 0 ? "EC" : seed % 4 === 0 ? "RV" : "REG",
+      destination: dests[Math.abs(seed) % dests.length],
+      depScheduled: fmtTime(t),
+      depEstimated: delay > 0 && !cancelled ? fmtTime(t + delay * 60_000) : null,
+      depScheduledMs: t,
+      depDelay: cancelled ? 0 : delay,
+      arrScheduled: fmtTime(arrMs),
+      arrPredicted: cancelled ? null : fmtTime(arrMs + delay * 60_000),
+      arrDelay: cancelled ? 0 : delay,
+      cancelled,
+      platform: String(1 + (Math.abs(seed) % 4)),
+      originId: north ? "S02026" : "S02014",
+      departureDateMs: null,
+    });
+    t += (16 + (Math.abs(seed) % 12)) * 60_000;
+  }
+  return trains;
 }
 
 export function demoTrainStatus(trainNumber: string, now: number = Date.now()): TrainStatus {
@@ -155,6 +220,7 @@ export function demoTrainStatus(trainNumber: string, now: number = Date.now()): 
       const passed = sched + delay * 60_000 < now;
       return {
         stationName: NET_STATIONS[key].name.toUpperCase(),
+        stationId: NET_STATIONS[key].id ?? key,
         scheduledArrival: fmtTime(sched),
         actualArrival: passed ? fmtTime(sched + delay * 60_000) : null,
         scheduledDeparture: fmtTime(sched + 60_000),
@@ -169,78 +235,91 @@ export function demoTrainStatus(trainNumber: string, now: number = Date.now()): 
   };
 }
 
-export function demoStats(now: number = Date.now()) {
+export function demoReliability(
+  days: number = 30,
+  train?: string | null,
+  now: number = Date.now()
+) {
+  // Daily avg corridor arrival delay for the chosen window
   const daily = [];
-  for (let i = 29; i >= 0; i--) {
+  for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now - i * 86_400_000);
     const weekday = d.getDay();
-    // Mondays are rough, weekends are calm
-    const base = weekday === 1 ? 11 : weekday === 0 || weekday === 6 ? 2 : 5;
+    const base = weekday === 1 ? 9 : weekday === 0 || weekday === 6 ? 2 : 5;
     const wobble = Math.abs(Math.sin(i * 2.7)) * 6;
     daily.push({
       date: d.toISOString().slice(0, 10),
       avgDelay: Math.round(base + wobble),
-      cancelled: i % 9 === 0 ? 1 : 0,
+      runs: 14 + (i % 4),
     });
   }
 
-  // Corridor-crossing routes only (display scope is Bozen–Brixen)
-  const routes = [
-    ["Bolzano", "Brennero"],
-    ["Merano", "Brennero"],
-    ["Brennero", "Merano"],
-    ["Bolzano", "Bressanone"],
-    ["Bressanone", "Verona Porta Nuova"],
+  // Deterministic corridor trains, both directions
+  const SCHED: [string, string][] = [
+    ["06:31", "07:09"],
+    ["07:02", "07:38"],
+    ["07:51", "08:24"],
+    ["08:33", "09:11"],
+    ["12:08", "12:46"],
+    ["16:39", "17:18"],
+    ["17:32", "18:09"],
+    ["18:41", "19:19"],
   ];
-
-  const trains = Array.from({ length: 10 }, (_, i) => {
-    const seed = i * 7 + 3;
-    const avgDelay = [1, 17, 3, 8, 2, 12, 5, 0, 22, 6][i];
-    const [o, d] = routes[i % routes.length];
+  const AVG = [22, 14, 9, 7, 6, 4, 3, 1, 12, 5, 2, 0];
+  const entries = Array.from({ length: 12 }, (_, i) => {
+    const nb = i % 2 === 0;
+    const avg = AVG[i];
+    const runs = 18 + (i % 6) * 3;
+    const [dep, arr] = SCHED[i % SCHED.length];
+    const cancelledCount = i === 1 ? 3 : i === 5 ? 1 : 0;
     return {
-      trainNumber: trainNumberFromSeed(seed, i % 2 === 0),
-      category: i % 5 === 0 ? "EC" : i % 4 === 0 ? "RV" : "REG",
-      route: `${o} → ${d}`,
-      totalRecorded: 140 + i * 11,
-      onTimePercent: Math.max(20, 96 - avgDelay * 3 - (i % 3) * 4),
-      avgDelay,
-      cancelledCount: avgDelay > 15 ? 4 : avgDelay > 8 ? 1 : 0,
-    };
-  });
-
-  return { trains, daily };
-}
-
-export function demoLeaderboard() {
-  // Corridor-crossing routes only (display scope is Bozen–Brixen)
-  const routes: [string, string, string, string][] = [
-    ["Brennero", "Merano", "06:37", "08:23"],
-    ["Bolzano", "Brennero", "07:02", "08:19"],
-    ["Bressanone", "Bolzano", "06:31", "07:09"],
-    ["Bressanone", "Verona Porta Nuova", "17:32", "19:05"],
-    ["Bolzano", "S.Candido", "12:08", "14:21"],
-    ["S.Candido", "Bolzano", "16:39", "18:54"],
-    ["Brennero", "Bolzano", "18:41", "19:58"],
-    ["Bolzano", "Bressanone", "07:51", "08:24"],
-  ];
-
-  return Array.from({ length: 14 }, (_, i) => {
-    const [origin, destination, dep, arr] = routes[i % routes.length];
-    const avgDelay = [22, 17, 13, 11, 9, 8, 6, 5, 4, 3, 2, 1, 1, 0][i];
-    const runs = 24 + (i % 5) * 2;
-    const cancelledCount = i === 1 ? 4 : i === 4 ? 1 : 0;
-    return {
-      trainNumber: trainNumberFromSeed(i * 11 + 5, i % 2 === 0),
+      trainNumber: trainNumberFromSeed(i * 11 + 5, nb),
       category: i % 6 === 0 ? "EC" : i % 4 === 0 ? "RV" : "REG",
-      origin,
-      destination,
+      direction: nb ? "NB" : "SB",
+      origin: nb ? "Bozen" : "Brixen",
+      destination: nb ? "Brixen" : "Bozen",
       schedDep: dep,
       schedArr: arr,
       runs,
-      totalDelay: avgDelay * (runs - cancelledCount),
-      avgDelay,
-      maxDelay: avgDelay * 3 + 5,
+      avgArrDelay: avg,
+      maxArrDelay: avg * 3 + 4,
+      avgDepDelay: Math.max(0, avg - 2),
+      onTimePct: Math.max(15, 100 - avg * 4),
       cancelledCount,
     };
-  });
+  }).sort(
+    (a, b) => b.avgArrDelay + b.cancelledCount * 5 - (a.avgArrDelay + a.cancelledCount * 5)
+  );
+
+  // Single-train lookup (map detail / inline badge): synthesize a deterministic
+  // entry for ANY train number so the demo always shows something.
+  if (train) {
+    const found = entries.find((e) => e.trainNumber === train);
+    if (found) return { entries: [found], daily, days };
+    const avg = demoExpectedDelay(train);
+    const nb = Number(train) % 2 === 1;
+    return {
+      entries: [
+        {
+          trainNumber: train,
+          category: "",
+          direction: nb ? "NB" : "SB",
+          origin: nb ? "Bozen" : "Brixen",
+          destination: nb ? "Brixen" : "Bozen",
+          schedDep: null,
+          schedArr: null,
+          runs: 24,
+          avgArrDelay: avg,
+          maxArrDelay: avg * 3 + 4,
+          avgDepDelay: Math.max(0, avg - 1),
+          onTimePct: Math.max(15, 100 - avg * 4),
+          cancelledCount: 0,
+        },
+      ],
+      daily,
+      days,
+    };
+  }
+
+  return { entries, daily, days };
 }

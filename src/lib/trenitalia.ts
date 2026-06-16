@@ -28,6 +28,7 @@ export interface TrainDeparture {
   originId: string;
   platform: string | null;
   departureDateMs: number | null;
+  scheduledMs: number | null; // epoch ms of the scheduled departure
 }
 
 export interface TrainArrival {
@@ -39,6 +40,7 @@ export interface TrainArrival {
   cancelled: boolean;
   originId: string;
   departureDateMs: number | null;
+  scheduledMs: number | null; // epoch ms of the scheduled arrival
 }
 
 export interface TrainStatus {
@@ -54,6 +56,7 @@ export interface TrainStatus {
 
 export interface TrainStop {
   stationName: string;
+  stationId: string; // Viaggiatreno station id (S0xxxx) from the run's stop list
   scheduledArrival: string | null;
   actualArrival: string | null;
   scheduledDeparture: string | null;
@@ -77,8 +80,7 @@ function parseTime(ts: number | null): string | null {
 
 // Viaggiatreno expects a JS Date.toString()-style timestamp in Italian local time,
 // e.g. "Fri Jun 12 2026 13:05:00 GMT+0200"
-function romeDateString(): string {
-  const now = new Date();
+function romeDateString(now: Date = new Date()): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone: "Europe/Rome",
@@ -126,35 +128,38 @@ interface RawArrival {
   dataPartenzaTreno: number | null;
 }
 
-export async function fetchDepartures(stationId: string): Promise<TrainDeparture[]> {
-  const url = `${BASE}/partenze/${stationId}/${encodeURIComponent(romeDateString())}`;
+export async function fetchDepartures(
+  stationId: string,
+  whenMs?: number
+): Promise<TrainDeparture[]> {
+  const when = whenMs != null ? new Date(whenMs) : new Date();
+  const url = `${BASE}/partenze/${stationId}/${encodeURIComponent(romeDateString(when))}`;
   const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 30 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
   const data: RawDeparture[] = await res.json();
 
-  return data
-    .filter((t) => {
-      // Only include trains that stop at both Bolzano and Bressanone
-      // We filter by destination or rely on the direction filter in the UI
-      return true;
-    })
-    .map((t) => ({
-      trainNumber: String(t.numeroTreno),
-      category: (t.categoriaDescrizione || "R").trim(),
-      destination: t.destinazione || "",
-      scheduledTime: parseTime(t.orarioPartenza) ?? "",
-      estimatedTime: t.compOrarioPartenzaZeroEffettivo || null,
-      delayMinutes: Math.max(0, t.ritardo || 0),
-      cancelled: t.provvedimento === 1,
-      originId: t.codOrigine || stationId,
-      platform: t.binarioProgrammatoPartenzaDescrizione || null,
-      departureDateMs: t.dataPartenzaTreno ?? null,
-    }));
+  return data.map((t) => ({
+    trainNumber: String(t.numeroTreno),
+    category: (t.categoriaDescrizione || "R").trim(),
+    destination: t.destinazione || "",
+    scheduledTime: parseTime(t.orarioPartenza) ?? "",
+    estimatedTime: t.compOrarioPartenzaZeroEffettivo || null,
+    delayMinutes: Math.max(0, t.ritardo || 0),
+    cancelled: t.provvedimento === 1,
+    originId: t.codOrigine || stationId,
+    platform: t.binarioProgrammatoPartenzaDescrizione || null,
+    departureDateMs: t.dataPartenzaTreno ?? null,
+    scheduledMs: t.orarioPartenza ?? null,
+  }));
 }
 
-export async function fetchArrivals(stationId: string): Promise<TrainArrival[]> {
-  const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(romeDateString())}`;
+export async function fetchArrivals(
+  stationId: string,
+  whenMs?: number
+): Promise<TrainArrival[]> {
+  const when = whenMs != null ? new Date(whenMs) : new Date();
+  const url = `${BASE}/arrivi/${stationId}/${encodeURIComponent(romeDateString(when))}`;
   const res = await fetch(url, { ...FETCH_OPTS, next: { revalidate: 30 } });
   if (!res.ok) throw new Error(`Trenitalia API error: ${res.status}`);
 
@@ -169,6 +174,7 @@ export async function fetchArrivals(stationId: string): Promise<TrainArrival[]> 
     cancelled: t.provvedimento === 1,
     originId: t.codOrigine || "",
     departureDateMs: t.dataPartenzaTreno ?? null,
+    scheduledMs: t.orarioArrivo ?? null,
   }));
 }
 
@@ -217,6 +223,7 @@ export async function fetchTrainStatus(
     lastSeenAt: d.stazioneUltimoRilevamento || null,
     stops: (d.fermate || []).map((s) => ({
       stationName: s.stazione,
+      stationId: s.id,
       scheduledArrival: parseTime(s.programmata),
       actualArrival: parseTime(s.effettiva),
       scheduledDeparture: parseTime(s.partenza_teorica),
@@ -228,6 +235,75 @@ export async function fetchTrainStatus(
       actDepMs: s.partenzaReale ?? null,
     })),
   };
+}
+
+export interface CorridorTrain {
+  trainNumber: string;
+  category: string;
+  destination: string; // final run destination
+  depScheduled: string;
+  depEstimated: string | null;
+  depScheduledMs: number | null;
+  depDelay: number;
+  arrScheduled: string;
+  arrPredicted: string | null;
+  arrDelay: number;
+  cancelled: boolean;
+  platform: string | null;
+  originId: string;
+  departureDateMs: number | null;
+}
+
+const TWO_HOURS_MS = 2 * 60 * 60_000;
+
+// Trains that genuinely travel `fromId` → `toId`: a run departing the origin and
+// arriving at the destination shares its train number across both boards. Two
+// board calls (instead of N andamentoTreno lookups) keep upstream load low.
+export async function fetchCorridorTrains(
+  fromId: string,
+  toId: string,
+  whenMs: number = Date.now()
+): Promise<CorridorTrain[]> {
+  const [departures, arrivals] = await Promise.all([
+    fetchDepartures(fromId, whenMs),
+    fetchArrivals(toId, whenMs),
+  ]);
+
+  const arrivalByNumber = new Map(arrivals.map((a) => [a.trainNumber, a]));
+  const windowEnd = whenMs + TWO_HOURS_MS;
+
+  return departures
+    .filter((d) => arrivalByNumber.has(d.trainNumber))
+    .filter((d) => d.scheduledMs == null || (d.scheduledMs >= whenMs - 60_000 && d.scheduledMs <= windowEnd))
+    .filter((d) => {
+      // The same train number can call at both stations while heading the other
+      // way (e.g. a northbound run stops at the origin *after* the destination).
+      // Keep only runs whose destination arrival is after the origin departure.
+      const a = arrivalByNumber.get(d.trainNumber)!;
+      return d.scheduledMs == null || a.scheduledMs == null || a.scheduledMs > d.scheduledMs;
+    })
+    .map((d) => {
+      const a = arrivalByNumber.get(d.trainNumber)!;
+      const arrPredicted =
+        a.scheduledMs != null ? parseTime(a.scheduledMs + a.delayMinutes * 60_000) : null;
+      return {
+        trainNumber: d.trainNumber,
+        category: d.category,
+        destination: d.destination,
+        depScheduled: d.scheduledTime,
+        depEstimated: d.estimatedTime,
+        depScheduledMs: d.scheduledMs,
+        depDelay: d.delayMinutes,
+        arrScheduled: a.scheduledTime,
+        arrPredicted,
+        arrDelay: a.delayMinutes,
+        cancelled: d.cancelled || a.cancelled,
+        platform: d.platform,
+        originId: d.originId,
+        departureDateMs: d.departureDateMs,
+      };
+    })
+    .sort((x, y) => (x.depScheduledMs ?? 0) - (y.depScheduledMs ?? 0));
 }
 
 export async function resolveTrainOrigin(trainNumber: string): Promise<string | null> {

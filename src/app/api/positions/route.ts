@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
       atStation: t.pos!.atStation,
       nextStation: t.pos!.nextStation,
       lastSeenAt: t.status.lastSeenAt,
+      originId: t.originId,
+      departureDateMs: t.departureDateMs,
     }));
 
   // CDN-cache briefly: upstream load stays constant regardless of visitors
