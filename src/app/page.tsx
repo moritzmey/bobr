@@ -5,6 +5,7 @@ import { BeaverLogo } from "@/components/BeaverLogo";
 import { CorridorBoard } from "@/components/CorridorBoard";
 import { ReliabilityView } from "@/components/ReliabilityView";
 import { LiveMap } from "@/components/LiveMap";
+import { DisruptionBanner } from "@/components/DisruptionBanner";
 import { isDemo } from "@/lib/clientDemo";
 import { Train, Map, Trophy } from "lucide-react";
 
@@ -52,6 +53,9 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* Live disruption / strike notices (STA · südtirolmobil), across all tabs */}
+      <DisruptionBanner />
 
       {/* Tabs */}
       <div className="max-w-lg mx-auto px-4 pt-4">
