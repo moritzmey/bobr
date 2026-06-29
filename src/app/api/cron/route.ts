@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { collectLiveTrains, serviceDateRome } from "@/lib/collect";
-import { crossesCorridorByName } from "@/lib/route";
 import {
   getSupabaseAdmin,
   TrainObservationInsert,
@@ -94,8 +93,8 @@ export async function GET(req: Request) {
         max_delay: 0,
         final_delay: 0,
         cancelled: true,
-        // no stop list for cancelled trains — infer from endpoint names
-        corridor: crossesCorridorByName(c.origin, c.destination),
+        // corridor membership reconstructed from the boards in collectLiveTrains
+        corridor: c.corridor,
         samples: 1,
         last_seen: nowIso,
       });

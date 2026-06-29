@@ -5,7 +5,8 @@ import {
   STATIONS,
   TrainStatus,
 } from "./trenitalia";
-import { computeNetworkPosition, matchNetStation, NetPosition } from "./route";
+import { computeNetworkPosition, crossesCorridorByName, matchNetStation, NetPosition } from "./route";
+import { collectOebbTrains } from "./oebb";
 
 // Stations whose departure/arrival boards we scan for candidate trains.
 // Together they cover the Brenner axis, Pustertal, and the Meran line.
@@ -53,6 +54,7 @@ export interface CancelledBoardTrain {
   origin: string;
   destination: string;
   scheduledTime: string;
+  corridor: boolean; // traverses Bozen ↔ Brixen (for the reliability stats)
 }
 
 export interface CollectionResult {
@@ -70,26 +72,42 @@ interface Candidate {
 export async function collectLiveTrains(now: number = Date.now()): Promise<CollectionResult> {
   const fallbackDate = todayMidnightRomeMs();
   const candidates = new Map<string, Candidate>();
-  const cancelled = new Map<string, CancelledBoardTrain>();
 
-  const boards = await Promise.allSettled(
-    BOARD_STATIONS.flatMap((id) => [fetchDepartures(id), fetchArrivals(id)])
-  );
+  // A suppressed train is often listed on only some boards, and each board
+  // reveals only one endpoint (departures → destination, arrivals → origin).
+  // Accumulate across all boards so we can recover both endpoints and note
+  // which corridor stations it touched, then infer corridor membership.
+  const cancelledAcc = new Map<string, CancelledBoardTrain & { stations: Set<string> }>();
 
-  for (const board of boards) {
+  const boardJobs = BOARD_STATIONS.flatMap((id) => [
+    { id, run: fetchDepartures(id) },
+    { id, run: fetchArrivals(id) },
+  ]);
+  const boards = await Promise.allSettled(boardJobs.map((j) => j.run));
+
+  for (let i = 0; i < boards.length; i++) {
+    const board = boards[i];
     if (board.status !== "fulfilled") continue;
+    const stationId = boardJobs[i].id;
     for (const t of board.value) {
       if (t.cancelled) {
-        if (!cancelled.has(t.trainNumber)) {
-          cancelled.set(t.trainNumber, {
+        let acc = cancelledAcc.get(t.trainNumber);
+        if (!acc) {
+          acc = {
             trainNumber: t.trainNumber,
             category: t.category,
             departureDateMs: t.departureDateMs ?? fallbackDate,
-            origin: "origin" in t ? (t as { origin: string }).origin : "",
-            destination: "destination" in t ? (t as { destination: string }).destination : "",
+            origin: "",
+            destination: "",
             scheduledTime: t.scheduledTime,
-          });
+            corridor: false,
+            stations: new Set<string>(),
+          };
+          cancelledAcc.set(t.trainNumber, acc);
         }
+        acc.stations.add(stationId);
+        if ("destination" in t && t.destination) acc.destination ||= t.destination;
+        if ("origin" in t && t.origin) acc.origin ||= t.origin;
         continue;
       }
       if (!t.originId || candidates.has(t.trainNumber)) continue;
@@ -101,6 +119,15 @@ export async function collectLiveTrains(now: number = Date.now()): Promise<Colle
       });
     }
   }
+
+  // A cancelled train is on the corridor if it was suppressed at both endpoints
+  // (Bozen and Brixen), or if its route endpoints cross the corridor by name.
+  const cancelled: CancelledBoardTrain[] = [...cancelledAcc.values()].map(({ stations, ...c }) => ({
+    ...c,
+    corridor:
+      (stations.has(STATIONS.BOLZANO.id) && stations.has(STATIONS.BRESSANONE.id)) ||
+      crossesCorridorByName(c.origin, c.destination),
+  }));
 
   const limited = [...candidates.values()].slice(0, MAX_CANDIDATES);
 
@@ -132,5 +159,20 @@ export async function collectLiveTrains(now: number = Date.now()): Promise<Colle
     });
   }
 
-  return { trains, cancelled: [...cancelled.values()] };
+  // Add the cross-border ÖBB/SAD trains that Viaggiatreno doesn't publish
+  // (e.g. R/REX 1826 to Innsbruck), skipping any number we already placed.
+  // Failures here must not take down the Viaggiatreno-based map.
+  try {
+    const have = new Set(trains.map((t) => t.trainNumber));
+    const oebb = await collectOebbTrains(BOARD_STATIONS, have, now);
+    for (const t of oebb) {
+      if (have.has(t.trainNumber)) continue;
+      have.add(t.trainNumber);
+      trains.push(t);
+    }
+  } catch (err) {
+    console.error("ÖBB collection error:", err);
+  }
+
+  return { trains, cancelled };
 }
